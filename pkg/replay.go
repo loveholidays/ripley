@@ -39,8 +39,7 @@ func Replay(phasesStr string, silent, printStats bool) {
 	pacer.start()
 
 	for scanner.Scan() {
-		text := scanner.Text()
-		req, err := unmarshalRequest([]byte(text))
+		req, err := unmarshalRequest(scanner.Bytes())
 
 		if err != nil {
 			panic(err)
@@ -83,6 +82,10 @@ func Replay(phasesStr string, silent, printStats bool) {
 				fmt.Println(string(jsonResult))
 			}
 		}()
+	}
+
+	if scanner.Err() != nil {
+		panic(scanner.Err())
 	}
 
 	waitGroup.Wait()

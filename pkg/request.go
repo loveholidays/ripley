@@ -49,10 +49,7 @@ func unmarshalRequest(jsonRequest []byte) (*request, error) {
 
 	// Validate
 
-	for _, verb := range validVerbs {
-		if req.Verb == verb {
-			break
-		}
+	if !validVerb(req.Verb) {
 		return nil, errors.New(fmt.Sprintf("Invalid verb: %s", req.Verb))
 	}
 
@@ -65,4 +62,13 @@ func unmarshalRequest(jsonRequest []byte) (*request, error) {
 	}
 
 	return req, nil
+}
+
+func validVerb(requestVerb string) bool {
+	for _, verb := range validVerbs {
+		if requestVerb == verb {
+			return true
+		}
+	}
+	return false
 }
