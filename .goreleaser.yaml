@@ -54,7 +54,7 @@ dockers:
       - --label=org.opencontainers.image.licenses=GPL-3.0
   - image_templates: ["loveholidays/{{ .ProjectName }}:{{ .Version }}-arm64v8"]
     goarch: arm64
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.arm64v8
     build_flag_templates:
       - --platform=linux/arm64/v8
       - --label=org.opencontainers.image.title={{ .ProjectName }}
