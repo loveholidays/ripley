@@ -2,9 +2,24 @@
 
 Ripley replays HTTP traffic at multiples of the original rate. It simulates traffic ramp up or down by specifying rate phases for each run. For example, you can replay HTTP requests at twice the original rate for ten minutes, then three times the original rate for five minutes, then ten times the original rate for an hour and so on. Ripley's original use case is load testing by replaying HTTP access logs from production applications.
 
-## Quickstart
+## Install
 
-Clone and build ripley
+### Pre-built
+
+MasOS:
+```bash
+brew install loveholidays/tap/ripley
+```
+Docker:
+```bash
+docker pull loveholidays/ripley
+```
+Linux:
+
+Grab the latest OS/Arch compatible binary from our [Releases](https://github.com/loveholidays/ripley/releases) page.
+
+
+### From source
 
 ```bash
 git clone git@github.com:loveholidays/ripley.git
@@ -12,6 +27,7 @@ cd ripley
 go build -o ripley main.go
 ```
 
+#### Quickstart from source
 Run a web server to replay traffic against
 
 ```bash
