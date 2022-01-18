@@ -4,7 +4,22 @@ Ripley replays HTTP traffic at multiples of the original rate. It simulates traf
 
 ## Quickstart
 
-Clone and build ripley
+### Pre-build:
+
+MasOS:
+```bash
+brew install loveholidays/tap/ripley
+```
+Docker:
+```bash
+docker pull loveholidays/ripley
+```
+Linux:
+
+Grab a latest OS/Arch compatible binary from our [Releases](https://github.com/loveholidays/ripley/releases) page.
+
+
+### From source:
 
 ```bash
 git clone git@github.com:loveholidays/ripley.git
