@@ -31,7 +31,7 @@ type result struct {
 	err        error
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *result) {
+func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *result, dryRun bool) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -40,33 +40,39 @@ func startClientWorkers(numWorkers int, requests <-chan *request, results chan<-
 	}
 
 	for i := 0; i <= numWorkers; i++ {
-		go doHttpRequest(client, requests, results)
+		go doHttpRequest(client, requests, results, dryRun)
 	}
 }
 
-func doHttpRequest(client *http.Client, requests <-chan *request, results chan<- *result) {
+func doHttpRequest(client *http.Client, requests <-chan *request, results chan<- *result, dryRun bool) {
 	for req := range requests {
 		latencyStart := time.Now()
-		httpReq, err := req.httpRequest()
+		resp := &http.Response{}
 
-		if err != nil {
-			results <- &result{err: err}
-			return
-		}
+		if !dryRun {
+			go func() {
+				httpReq, err := req.httpRequest()
 
-		resp, err := client.Do(httpReq)
+				if err != nil {
+					results <- &result{err: err}
+					return
+				}
 
-		if err != nil {
-			results <- &result{err: err}
-			return
-		}
+				resp, err := client.Do(httpReq)
 
-		_, err = io.ReadAll(resp.Body)
-		defer resp.Body.Close()
+				if err != nil {
+					results <- &result{err: err}
+					return
+				}
 
-		if err != nil {
-			results <- &result{err: err}
-			return
+				_, err = io.ReadAll(resp.Body)
+				defer resp.Body.Close()
+
+				if err != nil {
+					results <- &result{err: err}
+					return
+				}
+			}()
 		}
 
 		latency := time.Now().Sub(latencyStart)

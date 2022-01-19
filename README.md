@@ -6,15 +6,15 @@ Ripley replays HTTP traffic at multiples of the original rate. It simulates traf
 
 ### Pre-built
 
-MasOS:
+#### MasOS
 ```bash
 brew install loveholidays/tap/ripley
 ```
-Docker:
+#### Docker
 ```bash
 docker pull loveholidays/ripley
 ```
-Linux:
+#### Linux
 
 Grab the latest OS/Arch compatible binary from our [Releases](https://github.com/loveholidays/ripley/releases) page.
 
@@ -105,6 +105,12 @@ seq 10 | xargs -i cat etc/requests.jsonl | ./ripley -pace "10s@1 10s@5 1h@10" -s
     "stdDev": 449.1945986986041
   }
 }
+```
+
+It is possible to disable sending HTTP requests to the targets with the `-dry-run` flag:
+
+```bash
+cat etc/requests.jsonl | ./ripley -pace "30s@1" -dry-run
 ```
 
 ## Running the tests
