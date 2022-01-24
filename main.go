@@ -21,6 +21,9 @@ package main
 import (
 	"flag"
 	"github.com/loveholidays/ripley/pkg"
+	"os"
+	"runtime"
+	"runtime/pprof"
 )
 
 func main() {
@@ -28,8 +31,24 @@ func main() {
 	silent := flag.Bool("silent", false, "Suppress output")
 	printStats := flag.Bool("stats", false, "Collect and print statistics before the program exits")
 	dryRun := flag.Bool("dry-run", false, "Consume input but do not send HTTP requests to targets")
+	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 
 	flag.Parse()
 
 	ripley.Replay(*paceStr, *silent, *printStats, *dryRun)
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+
+		if err != nil {
+			panic(err)
+		}
+
+		defer f.Close()
+		runtime.GC()
+
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			panic(err)
+		}
+	}
 }
