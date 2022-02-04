@@ -1,6 +1,6 @@
 # ripley - replay HTTP
 
-Ripley replays HTTP traffic at multiples of the original rate. It simulates traffic ramp up or down by specifying rate phases for each run. For example, you can replay HTTP requests at twice the original rate for ten minutes, then three times the original rate for five minutes, then ten times the original rate for an hour and so on. Ripley's original use case is load testing by replaying HTTP access logs from production applications.
+Ripley replays HTTP traffic at multiples of the original rate. While similar tools usually generate load at a set rate, such as 100 requests per second, ripley uses request timestamps, for example those recorded in access logs, to more accurately represent real world load. It simulates traffic ramp up or down by specifying rate phases for each run. For example, you can replay HTTP requests at twice the original rate for ten minutes, then three times the original rate for five minutes, then ten times the original rate for an hour and so on. Ripley's original use case is load testing by replaying HTTP access logs from production applications.
 
 ## Install
 
