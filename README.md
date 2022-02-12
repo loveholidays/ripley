@@ -48,14 +48,17 @@ An example ripley request:
 
 ```JSON
 {
-    "url": "http://localhost:8080/",
-    "verb": "GET",
-    "timestamp": "2021-11-08T18:59:59.9Z",
-    "headers": {"Accept": "text/plain"}
+  "url": "http://localhost:8080/",
+  "verb": "POST",
+  "body": "{\"foo\": \"bar\"}",
+  "headers": {
+    "Accept": "text/plain"
+  },
+  "timestamp": "2021-11-08T18:59:58.9Z"
 }
 ```
 
-`url`, `verb` and `timestamp` are required, `headers` are optional.
+`url`, `verb` and `timestamp` are required, `headers` and `body` are optional.
 
 `-pace` specifies rate phases in `[duration]@[rate]` format. For example, `10s@5 5m@10 1h30m@100` means replay traffic at 5x for 10 seconds, 10x for 5 minutes and 100x for one and a half hours. The run will stop either when ripley stops receiving requests from `STDIN` or when the last phase elapses, whichever happens first.
 

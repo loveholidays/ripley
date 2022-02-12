@@ -6,5 +6,5 @@
 {"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:55.9Z"}
 {"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:56.9Z"}
 {"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:57.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:58.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:59.9Z", "headers": {"Accept": "text/plain"}}
+{"url": "http://localhost:8080/", "verb": "POST", "body": "{\"foo\": \"bar\"}", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:58.9Z"}
+{"url": "http://localhost:8080/", "verb": "GET", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:59.9Z"}

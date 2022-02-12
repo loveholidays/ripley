@@ -47,9 +47,10 @@ func startClientWorkers(numWorkers int, requests <-chan *request, results chan<-
 func doHttpRequest(client *http.Client, requests <-chan *request, results chan<- *result, dryRun bool) {
 	for req := range requests {
 		latencyStart := time.Now()
-		resp := &http.Response{}
 
-		if !dryRun {
+		if dryRun {
+			sendResult(req, &http.Response{}, latencyStart, results)
+		} else {
 			go func() {
 				httpReq, err := req.httpRequest()
 
@@ -72,10 +73,14 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 					results <- &result{err: err}
 					return
 				}
+
+				sendResult(req, resp, latencyStart, results)
 			}()
 		}
-
-		latency := time.Now().Sub(latencyStart)
-		results <- &result{StatusCode: resp.StatusCode, Latency: latency, Request: req}
 	}
+}
+
+func sendResult(req *request, resp *http.Response, latencyStart time.Time, results chan<- *result) {
+	latency := time.Now().Sub(latencyStart)
+	results <- &result{StatusCode: resp.StatusCode, Latency: latency, Request: req}
 }
