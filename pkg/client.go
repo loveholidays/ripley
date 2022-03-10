@@ -31,9 +31,9 @@ type result struct {
 	err        error
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *result, dryRun bool) {
+func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *result, dryRun bool, timeout int) {
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: time.Duration(timeout) * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},

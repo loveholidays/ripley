@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func Replay(phasesStr string, silent, printStats, dryRun bool) {
+func Replay(phasesStr string, silent, printStats, dryRun bool, timeout int) {
 	// Ensures we have handled all HTTP request results before exiting
 	var waitGroup sync.WaitGroup
 
@@ -53,7 +53,7 @@ func Replay(phasesStr string, silent, printStats, dryRun bool) {
 	scanner := bufio.NewScanner(os.Stdin)
 
 	// Start HTTP client goroutine pool
-	startClientWorkers(1000, requests, results, dryRun)
+	startClientWorkers(1000, requests, results, dryRun, timeout)
 	pacer.start()
 
 	for scanner.Scan() {

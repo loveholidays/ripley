@@ -31,11 +31,12 @@ func main() {
 	silent := flag.Bool("silent", false, "Suppress output")
 	printStats := flag.Bool("stats", false, "Collect and print statistics before the program exits")
 	dryRun := flag.Bool("dry-run", false, "Consume input but do not send HTTP requests to targets")
+	timeout := flag.Int("timeout", 10, "HTTP client timeout in seconds")
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 
 	flag.Parse()
 
-	ripley.Replay(*paceStr, *silent, *printStats, *dryRun)
+	ripley.Replay(*paceStr, *silent, *printStats, *dryRun, *timeout)
 
 	if *memprofile != "" {
 		f, err := os.Create(*memprofile)
