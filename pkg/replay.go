@@ -84,10 +84,6 @@ func Replay(phasesStr string, silent, printStats, dryRun bool, timeout int) {
 				return
 			}
 
-			if result.err != nil {
-				panic(result.err)
-			}
-
 			stats.onResult(result)
 
 			jsonResult, err := json.Marshal(result)

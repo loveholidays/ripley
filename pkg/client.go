@@ -28,7 +28,7 @@ type result struct {
 	StatusCode int           `json:"statusCode"`
 	Latency    time.Duration `json:"latency"`
 	Request    *request      `json:"request"`
-	err        error
+	ErrorMsg   string        `json:"error"`
 }
 
 func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *result, dryRun bool, timeout int) {
@@ -49,20 +49,20 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 		latencyStart := time.Now()
 
 		if dryRun {
-			sendResult(req, &http.Response{}, latencyStart, results)
+			sendResult(req, &http.Response{}, latencyStart, "", results)
 		} else {
 			go func() {
 				httpReq, err := req.httpRequest()
 
 				if err != nil {
-					results <- &result{err: err}
+					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
 					return
 				}
 
 				resp, err := client.Do(httpReq)
 
 				if err != nil {
-					results <- &result{err: err}
+					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
 					return
 				}
 
@@ -70,17 +70,17 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 				defer resp.Body.Close()
 
 				if err != nil {
-					results <- &result{err: err}
+					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
 					return
 				}
 
-				sendResult(req, resp, latencyStart, results)
+				sendResult(req, resp, latencyStart, "", results)
 			}()
 		}
 	}
 }
 
-func sendResult(req *request, resp *http.Response, latencyStart time.Time, results chan<- *result) {
+func sendResult(req *request, resp *http.Response, latencyStart time.Time, err string, results chan<- *result) {
 	latency := time.Now().Sub(latencyStart)
-	results <- &result{StatusCode: resp.StatusCode, Latency: latency, Request: req}
+	results <- &result{StatusCode: resp.StatusCode, Latency: latency, Request: req, ErrorMsg: err}
 }
