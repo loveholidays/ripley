@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func Replay(phasesStr string, silent, printStats, dryRun bool, timeout int) {
+func Replay(phasesStr string, silent, dryRun bool, timeout int) {
 	// Ensures we have handled all HTTP request results before exiting
 	var waitGroup sync.WaitGroup
 
@@ -36,7 +36,7 @@ func Replay(phasesStr string, silent, printStats, dryRun bool, timeout int) {
 	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
-	results := make(chan *result)
+	results := make(chan *Result)
 	defer close(results)
 
 	// The pacer controls the rate of replay
@@ -45,9 +45,6 @@ func Replay(phasesStr string, silent, printStats, dryRun bool, timeout int) {
 	if err != nil {
 		panic(err)
 	}
-
-	// If printStats is true, collect and print statistics on exit
-	stats := newStats(printStats)
 
 	// Read request JSONL input from STDIN
 	scanner := bufio.NewScanner(os.Stdin)
@@ -84,8 +81,6 @@ func Replay(phasesStr string, silent, printStats, dryRun bool, timeout int) {
 				return
 			}
 
-			stats.onResult(result)
-
 			jsonResult, err := json.Marshal(result)
 
 			if err != nil {
@@ -103,9 +98,4 @@ func Replay(phasesStr string, silent, printStats, dryRun bool, timeout int) {
 	}
 
 	waitGroup.Wait()
-	err = stats.print()
-
-	if err != nil {
-		panic(err)
-	}
 }
