@@ -86,26 +86,26 @@ produces
 
 Results output can be suppressed using the `-silent` flag.
 
-It is possible to collect and print a run's statistics:
+For an example of working with ripley's output to generate statistics, refer to [etc/stats.go](https://github.com/loveholidays/ripley/blob/main/etc/stats.go)
 
 ```bash
-seq 10 | xargs -i cat etc/requests.jsonl | ./ripley -pace "10s@1 10s@5 1h@10" -silent -stats | jq
+cat etc/requests.jsonl | ./ripley | go run ./etc/stats.go | jq
 ```
 
 ```JSON
 {
-  "totalRequests": 100,
+  "totalRequests": 10,
   "statusCodes": {
-    "200": 100
+    "200": 10
   },
-  "latencyMicroseconds": {
-    "max": 2960,
-    "mean": 2008.25,
-    "median": 2085.5,
-    "min": 815,
-    "p95": 2577,
-    "p99": 2876,
-    "stdDev": 449.1945986986041
+  "latency": {
+    "max": 2074819,
+    "mean": 968998.6,
+    "median": 843486,
+    "min": 696708,
+    "p95": 1548438.5,
+    "p99": 1548438.5,
+    "stdDev": 377913.54080112034
   }
 }
 ```
@@ -119,5 +119,5 @@ cat etc/requests.jsonl | ./ripley -pace "30s@1" -dry-run
 ## Running the tests
 
 ```bash
-go test pkg/*go
+go test pkg/*.go
 ```
