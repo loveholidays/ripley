@@ -1,10 +1,10 @@
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:50.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:51.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:52.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:53.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:54.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:55.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:56.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:57.9Z"}
-{"url": "http://localhost:8080/", "verb": "POST", "body": "{\"foo\": \"bar\"}", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:58.9Z"}
-{"url": "http://localhost:8080/", "verb": "GET", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:59.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:50.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:51.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:52.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:53.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:54.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:55.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:56.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:57.9Z"}
+{"url": "http://localhost:8080/", "method": "POST", "body": "{\"foo\": \"bar\"}", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:58.9Z"}
+{"url": "http://localhost:8080/", "method": "GET", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:59.9Z"}
