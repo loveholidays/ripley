@@ -49,7 +49,7 @@ An example ripley request:
 ```JSON
 {
   "url": "http://localhost:8080/",
-  "verb": "POST",
+  "method": "POST",
   "body": "{\"foo\": \"bar\"}",
   "headers": {
     "Accept": "text/plain"
@@ -58,14 +58,14 @@ An example ripley request:
 }
 ```
 
-`url`, `verb` and `timestamp` are required, `headers` and `body` are optional.
+`url`, `method` and `timestamp` are required, `headers` and `body` are optional.
 
 `-pace` specifies rate phases in `[duration]@[rate]` format. For example, `10s@5 5m@10 1h30m@100` means replay traffic at 5x for 10 seconds, 10x for 5 minutes and 100x for one and a half hours. The run will stop either when ripley stops receiving requests from `STDIN` or when the last phase elapses, whichever happens first.
 
 Ripley writes request results as JSON Lines to `STDOUT`
 
 ```bash
-echo '{"url": "http://localhost:8080/", "verb": "GET", "timestamp": "2021-11-08T18:59:50.9Z"}' | ./ripley | jq
+echo '{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:50.9Z"}' | ./ripley | jq
 ```
 
 produces
@@ -75,7 +75,7 @@ produces
   "statusCode": 200,
   "latency": 3915447,
   "request": {
-    "verb": "GET",
+    "method": "GET",
     "url": "http://localhost:8080/",
     "body": "",
     "timestamp": "2021-11-08T18:59:50.9Z",

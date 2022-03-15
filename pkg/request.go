@@ -28,11 +28,11 @@ import (
 )
 
 var (
-	validVerbs = [9]string{"GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"}
+	validMethods = [9]string{"GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"}
 )
 
 type request struct {
-	Verb      string            `json:"verb"`
+	Method    string            `json:"method"`
 	Url       string            `json:"url"`
 	Body      string            `json:"body"`
 	Timestamp time.Time         `json:"timestamp"`
@@ -40,7 +40,7 @@ type request struct {
 }
 
 func (r *request) httpRequest() (*http.Request, error) {
-	req, err := http.NewRequest(r.Verb, r.Url, bytes.NewReader([]byte(r.Body)))
+	req, err := http.NewRequest(r.Method, r.Url, bytes.NewReader([]byte(r.Body)))
 
 	if err != nil {
 		return nil, err
@@ -67,8 +67,8 @@ func unmarshalRequest(jsonRequest []byte) (*request, error) {
 
 	// Validate
 
-	if !validVerb(req.Verb) {
-		return nil, errors.New(fmt.Sprintf("Invalid verb: %s", req.Verb))
+	if !validMethod(req.Method) {
+		return nil, errors.New(fmt.Sprintf("Invalid method: %s", req.Method))
 	}
 
 	if req.Url == "" {
@@ -82,9 +82,9 @@ func unmarshalRequest(jsonRequest []byte) (*request, error) {
 	return req, nil
 }
 
-func validVerb(requestVerb string) bool {
-	for _, verb := range validVerbs {
-		if requestVerb == verb {
+func validMethod(requestMethod string) bool {
+	for _, method := range validMethods {
+		if requestMethod == method {
 			return true
 		}
 	}
