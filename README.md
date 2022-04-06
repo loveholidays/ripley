@@ -4,23 +4,31 @@ Ripley replays HTTP traffic at multiples of the original rate. While similar too
 
 ## Install
 
-### Pre-built
+```bash
+# go >= 1.17
+# Using `go get` to install binaries is deprecated.
+# The version suffix is mandatory.
+go install github.com/loveholidays/ripley@latest
 
-#### MasOS
+# go < 1.17
+go get github.com/loveholidays/ripley
+```
+
+### Homebrew
+
 ```bash
 brew install loveholidays/tap/ripley
 ```
-#### Docker
+
+### Docker
 ```bash
 docker pull loveholidays/ripley
 ```
-#### Linux
 
+### Linux
 Grab the latest OS/Arch compatible binary from our [Releases](https://github.com/loveholidays/ripley/releases) page.
 
-
 ### From source
-
 ```bash
 git clone git@github.com:loveholidays/ripley.git
 cd ripley
