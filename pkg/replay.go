@@ -22,6 +22,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -55,9 +56,9 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int) {
 
 	for scanner.Scan() {
 		req, err := unmarshalRequest(scanner.Bytes())
-
 		if err != nil {
-			panic(err)
+			log.Println("ERROR: ", err)
+			continue
 		}
 
 		if pacer.done {
