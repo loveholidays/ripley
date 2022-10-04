@@ -32,12 +32,12 @@ func main() {
 	silent := flag.Bool("silent", false, "Suppress output")
 	dryRun := flag.Bool("dry-run", false, "Consume input but do not send HTTP requests to targets")
 	timeout := flag.Int("timeout", 10, "HTTP client timeout in seconds")
-	strictMode := flag.Bool("strictMode", false, "Strict mode")
+	strict := flag.Bool("strict", false, "Panic on bad input")
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 
 	flag.Parse()
 
-	exitCode := ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strictMode)
+	exitCode := ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict)
 	defer os.Exit(exitCode)
 
 	if *memprofile != "" {
