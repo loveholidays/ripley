@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func Replay(phasesStr string, silent, dryRun bool, timeout int, strictMode bool) int {
+func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool) int {
 	// Default exit code
 	var exitCode int = 0
 	// Ensures we have handled all HTTP request results before exiting
@@ -58,20 +58,19 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strictMode bool)
 	for scanner.Scan() {
 		req, err := unmarshalRequest(scanner.Bytes())
 		if err != nil {
-			if strictMode {
-				panic(err)
-			} else {
-				exitCode = 126
-				result, _ := json.Marshal(Result{
-					StatusCode: 0,
-					Latency:    0,
-					Request:    req,
-					ErrorMsg:   fmt.Sprintf("%v", err),
-				})
-				fmt.Println(string(result))
+			exitCode = 126
+			result, _ := json.Marshal(Result{
+				StatusCode: 0,
+				Latency:    0,
+				Request:    req,
+				ErrorMsg:   fmt.Sprintf("%v", err),
+			})
+			fmt.Println(string(result))
 
-				continue
+			if strict {
+				panic(err)
 			}
+			continue
 		}
 
 		if pacer.done {
