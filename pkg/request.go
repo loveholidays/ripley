@@ -21,7 +21,6 @@ package ripley
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -62,21 +61,20 @@ func unmarshalRequest(jsonRequest []byte) (*request, error) {
 	err := json.Unmarshal(jsonRequest, &req)
 
 	if err != nil {
-		return nil, err
+		return req, err
 	}
 
 	// Validate
-
 	if !validMethod(req.Method) {
-		return nil, errors.New(fmt.Sprintf("Invalid method: %s", req.Method))
+		return req, fmt.Errorf("invalid method: %s", req.Method)
 	}
 
 	if req.Url == "" {
-		return nil, errors.New("Missing required key: url")
+		return req, fmt.Errorf("missing required key: url")
 	}
 
 	if req.Timestamp.IsZero() {
-		return nil, errors.New("Missing required key: timestamp")
+		return req, fmt.Errorf("missing required key: timestamp")
 	}
 
 	return req, nil

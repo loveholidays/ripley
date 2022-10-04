@@ -27,7 +27,9 @@ import (
 	"time"
 )
 
-func Replay(phasesStr string, silent, dryRun bool, timeout int) {
+func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool) int {
+	// Default exit code
+	var exitCode int = 0
 	// Ensures we have handled all HTTP request results before exiting
 	var waitGroup sync.WaitGroup
 
@@ -55,9 +57,20 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int) {
 
 	for scanner.Scan() {
 		req, err := unmarshalRequest(scanner.Bytes())
-
 		if err != nil {
-			panic(err)
+			exitCode = 126
+			result, _ := json.Marshal(Result{
+				StatusCode: 0,
+				Latency:    0,
+				Request:    req,
+				ErrorMsg:   fmt.Sprintf("%v", err),
+			})
+			fmt.Println(string(result))
+
+			if strict {
+				panic(err)
+			}
+			continue
 		}
 
 		if pacer.done {
@@ -98,4 +111,6 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int) {
 	}
 
 	waitGroup.Wait()
+
+	return exitCode
 }
