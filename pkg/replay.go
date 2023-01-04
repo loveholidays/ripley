@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool) int {
+func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers int) int {
 	// Default exit code
 	var exitCode int = 0
 	// Ensures we have handled all HTTP request results before exiting
@@ -52,7 +52,7 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool) int
 	scanner := bufio.NewScanner(os.Stdin)
 
 	// Start HTTP client goroutine pool
-	startClientWorkers(1000, requests, results, dryRun, timeout)
+	startClientWorkers(numWorkers, requests, results, dryRun, timeout)
 	pacer.start()
 
 	for scanner.Scan() {

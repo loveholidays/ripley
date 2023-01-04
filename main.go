@@ -34,10 +34,11 @@ func main() {
 	timeout := flag.Int("timeout", 10, "HTTP client timeout in seconds")
 	strict := flag.Bool("strict", false, "Panic on bad input")
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
+	numWorkers := flag.Int("workers", 1000, "Number of client workers to use")
 
 	flag.Parse()
 
-	exitCode := ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict)
+	exitCode := ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers)
 	defer os.Exit(exitCode)
 
 	if *memprofile != "" {
