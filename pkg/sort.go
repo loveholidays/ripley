@@ -24,7 +24,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
+
+type requestSort struct {
+	requestHeap *requestHeap
+	// Used to check if requests are being emitted out of order
+	lastTimestamp time.Time
+	exitCode      int
+	// Number of requests to keep in the heap - once reached, start popping
+	bufferlen int
+	// Whether to panic on bad input or out of order timestamps
+	strict bool
+}
+
+func NewRequestSort(bufferlen int, strict bool) *requestSort {
+	rs := &requestSort{}
+	rs.requestHeap = &requestHeap{}
+	heap.Init(rs.requestHeap)
+	rs.lastTimestamp, _ = time.Parse(time.RFC3339, "1987-11-08T18:55:00.9Z")
+	rs.exitCode = 0
+	rs.bufferlen = bufferlen
+	rs.strict = strict
+	return rs
+}
 
 // An implementation of https://pkg.go.dev/container/heap
 // Holds `heapLen` requests sorted by timestamp and prints them in ascending order
@@ -54,58 +77,71 @@ func (rs requestHeap) Swap(i, j int) {
 	rs[i], rs[j] = rs[j], rs[i]
 }
 
-// `bufferlen` is the number of requests to keep in the heap - once reached, start popping
-func Sort(bufferlen int, strict bool) int {
-	exitCode := 0
-	reqHeap := &requestHeap{}
-	heap.Init(reqHeap)
+func (rs *requestSort) Sort() int {
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for scanner.Scan() {
 		req, err := unmarshalRequest(scanner.Bytes())
 
 		if err != nil {
-			exitCode = 126
-			if strict {
+			rs.exitCode = 126
+			if rs.strict {
+				fmt.Fprintf(os.Stderr, "[%s]\n", scanner.Bytes())
 				panic(err)
 			}
 			fmt.Fprintln(os.Stderr, err)
 			continue
 		}
 
-		heap.Push(reqHeap, req)
+		heap.Push(rs.requestHeap, req)
 
-		if bufferlen == 0 {
-			exitCode = popPrint(reqHeap, strict)
+		if rs.bufferlen == 0 {
+			rs.popPrint()
 		} else {
-			bufferlen--
+			rs.bufferlen--
 		}
 	}
 
-	for {
-		if reqHeap.Len() == 0 {
-			break
-		}
-
-		exitCode = popPrint(reqHeap, strict)
-
+	// Flush the request heap
+	for rs.popPrint() {
 	}
 
-	return exitCode
+	return rs.exitCode
 }
 
-func popPrint(reqHeap *requestHeap, strict bool) int {
-	r := heap.Pop(reqHeap)
+// Pops a request from the heap and prints it
+// Returns false if the heap is empty, true if it isn't
+func (rs *requestSort) popPrint() bool {
+	r := heap.Pop(rs.requestHeap)
+
+	ts := r.(*request).Timestamp
+
+	// Are we emitting an out of order request?
+	if ts.Before(rs.lastTimestamp) {
+		errMsg := fmt.Sprintf("Out of order timestamps [%v] and [%v]", rs.lastTimestamp, ts)
+
+		if rs.strict {
+			panic(errMsg)
+		} else {
+			fmt.Fprintln(os.Stderr, errMsg)
+			rs.exitCode = 126
+		}
+	}
+
+	// Remember this timestamp to test the next one we emit isn't before it
+	rs.lastTimestamp = ts
+
 	j, err := json.Marshal(r)
 
 	if err != nil {
-		if strict {
+		if rs.strict {
 			panic(err)
 		}
 		fmt.Fprintln(os.Stderr, err)
-		return 126
+		rs.exitCode = 126
 	}
 
 	fmt.Println(string(j))
-	return 0
+
+	return rs.requestHeap.Len() > 0
 }

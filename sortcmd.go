@@ -29,7 +29,8 @@ import (
 
 func main() {
 	bufferlen := flag.Int("bufferlen", 100, "Number of requests to keep in memory")
-	strict := flag.Bool("strict", false, "Panic on bad input")
+	strict := flag.Bool("strict", false, "Panic on bad input or when outputting an out of order request")
 	flag.Parse()
-	os.Exit(ripley.Sort(*bufferlen, *strict))
+	rs := ripley.NewRequestSort(*bufferlen, *strict)
+	os.Exit(rs.Sort())
 }
