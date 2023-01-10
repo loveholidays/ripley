@@ -160,7 +160,7 @@ echo $? #=> 126
 
 ## ripleysort
 
-If the access logs that ripley replays are not strictly ordered by their timestamps, the `ripleysort` command can stream sort them, without loading all of the requests in memory. This is useful when replaying large datasets that won't fit in the host system's available memory. The `-bufferlen` flag can be used to configure `ripleysort`'s request buffer in to order to correctly sort certain datasets. In `-strict` mode, `ripleysort` will panic when it emits an out of order request. Knowing when `ripleysort` emits an out of order request is useful when tuning `-bufferlen`.
+If the access logs that ripley replays are not strictly ordered by their timestamps, such as when combining access logs from several different sources, the `ripleysort` command can stream sort them, without loading all of the requests in memory. This is useful when sorting large datasets that won't fit in the host system's available memory. The `-bufferlen` flag can be used to configure `ripleysort`'s request buffer in to order to correctly sort certain datasets. In `-strict` mode, `ripleysort` will panic when it emits an out of order request. Knowing when `ripleysort` emits an out of order request is useful when tuning `-bufferlen`.
 
 ```bash
 cat etc/outoforderrequests.jsonl | jq '.["timestamp"]'
