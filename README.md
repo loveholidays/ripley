@@ -183,8 +183,9 @@ cat etc/outoforderrequests.jsonl | jq '.["timestamp"]'
 "2021-11-08T19:00:00.00Z"
 ```
 ```bash
-cat etc/outoforderrequests.jsonl| ./ripleysort | jq '.["timestamp"]'
-invalid method: PROPFIND
+cat etc/outoforderrequests.jsonl | ./ripleysort | jq '.["timestamp"]'
+```
+```bash
 "2021-11-08T18:59:50.9Z"
 "2021-11-08T18:59:51.9Z"
 "2021-11-08T18:59:52.9Z"
