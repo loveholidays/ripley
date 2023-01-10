@@ -124,31 +124,48 @@ It is possible to disable sending HTTP requests to the targets with the `-dry-ru
 cat etc/requests.jsonl | ./ripley -pace "30s@1" -dry-run
 ```
 
-Strict mode causes ripley to panic when encountering an error:
+`-strict` mode causes ripley to panic when encountering an error:
 
 ```bash
 cat etc/requests.jsonl | ./ripley -strict
 ```
 
 ```JSON
-{"statusCode":0,"latency":0,"request":{"method":"PROPFIND","url":"http://localhost:8080/","body":"","timestamp":"2021-11-08T19:00:00.03Z","headers":null},"error":"invalid method: PROPFIND"}
+{
+  "statusCode": 0,
+  "latency": 0,
+  "request": {
+    "method": "PROPFIND",
+    "url": "http://localhost:8080/",
+    "body": "",
+    "timestamp": "2021-11-08T19:00:00.03Z",
+    "headers": null
+  },
+  "error": "invalid method: PROPFIND"
+}
+```
+
+```bash
 panic: invalid method: PROPFIND
 ```
 
 If `-strict` isn't specified, ripley will print the problematic request, skip it and exit with a non zero exit code when it's done processing all requeests. Problematic requests aren't replayed.
 
 ```bash
-% cat etc/requests.jsonl | ./ripley -dry-run > /dev/null
-% echo $?
-126
+cat etc/requests.jsonl | ./ripley -dry-run > /dev/null
+```
+```bash
+echo $? #=> 126
 ```
 
 ## ripleysort
 
-If the access logs that ripley replays are not strictly ordered by their timestamps, the `riplysort` command can stream sort them, without loading all of the requests in memory. This is useful when replaying large datasets that won't fit in the host system's available memory. `ripleysort` uses a request buffer that can be tuned in order to sort certain datasets. In `-strict` mode, `ripleysort` will panic when it emits an out of order request.
+If the access logs that ripley replays are not strictly ordered by their timestamps, the `ripleysort` command can stream sort them, without loading all of the requests in memory. This is useful when replaying large datasets that won't fit in the host system's available memory. The `-bufferlen` flag can be used to configure `ripleysort`'s request buffer in to order to correctly sort certain datasets. In `-strict` mode, `ripleysort` will panic when it emits an out of order request. Knowing when `ripleysort` emits an out of order request is useful when tuning `-bufferlen`.
 
 ```bash
-% cat etc/outoforderrequests.jsonl | jq '.["timestamp"]'
+cat etc/outoforderrequests.jsonl | jq '.["timestamp"]'
+```
+```bash
 "2021-11-08T18:59:50.9Z"
 "2021-11-08T18:59:52.9Z"
 "2021-11-08T18:59:51.9Z"
@@ -164,8 +181,9 @@ If the access logs that ripley replays are not strictly ordered by their timesta
 "2021-11-08T19:00:00.03Z"
 "2021-11-08T19:00:00.04Z"
 "2021-11-08T19:00:00.00Z"
-
-% cat etc/outoforderrequests.jsonl| ./ripleysort | jq '.["timestamp"]'
+```
+```bash
+cat etc/outoforderrequests.jsonl| ./ripleysort | jq '.["timestamp"]'
 invalid method: PROPFIND
 "2021-11-08T18:59:50.9Z"
 "2021-11-08T18:59:51.9Z"
@@ -181,6 +199,13 @@ invalid method: PROPFIND
 "2021-11-08T19:00:00.01Z"
 "2021-11-08T19:00:00.02Z"
 "2021-11-08T19:00:00.04Z"
+```
+
+Build `ripleysort` with:
+```bash
+go build -o ripley main.go
+```
+
 
 ## Running the tests
 
