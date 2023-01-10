@@ -98,6 +98,7 @@ func (rs *requestSort) Sort() int {
 		if rs.bufferlen == 0 {
 			rs.popPrint()
 		} else {
+			// Buffer not full yet, keep collecting requests
 			rs.bufferlen--
 		}
 	}
