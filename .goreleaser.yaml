@@ -5,7 +5,20 @@ before:
   hooks:
     - go mod tidy
 builds:
-  - env:
+  -
+    id: ripley
+    main: ./cmd/ripley
+    binary: ripley
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+  -
+    id: ripleysort
+    main: ./cmd/ripleysort
+    binary: ripleysort
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -39,6 +52,20 @@ brews:
     description: "Replays HTTP traffic at multiples of the original rate"
     install: |
       bin.install "ripley"
+    license: "GPL-3.0"
+  -
+    name: ripleysort
+    tap:
+      owner: loveholidays
+      name: homebrew-tap
+    commit_author:
+      name: loveholidays
+      email: oss@loveholidays.com
+    folder: Formula
+    homepage: "https://github.com/loveholidays/ripley#ripleysort"
+    description: "Stream sorts JSONL by a top level 'timestamp' field"
+    install: |
+      bin.install "ripleysort"
     license: "GPL-3.0"
 dockers:
   - image_templates: ["loveholidays/{{ .ProjectName }}:{{ .Version }}-amd64"]
