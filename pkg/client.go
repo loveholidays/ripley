@@ -32,7 +32,7 @@ type Result struct {
 	ErrorMsg   string        `json:"error"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan *Result, dryRun bool, timeout int, silent bool) {
+func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout int) {
 	client := &fasthttp.Client{
 		Name:            "ripley",
 		MaxConnsPerHost: numWorkers,
@@ -72,11 +72,6 @@ func doHttpRequest(client *fasthttp.Client, requests <-chan *request, results ch
 		}
 	}
 }
-
-// func sendResult(req *request, resp *fasthttp.Response, latencyStart time.Time, err string, results chan<- *Result) {
-// 	latency := time.Since(latencyStart)
-// 	results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: err}
-// }
 
 func sendResult(req *request, resp *fasthttp.Response, latencyStart time.Time, err string, results chan<- *Result) {
 	latency := time.Now().Sub(latencyStart)
