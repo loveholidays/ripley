@@ -77,7 +77,7 @@ func doHttpRequest(client *fasthttp.Client, requests <-chan *request, results ch
 }
 
 func sendResult(req *request, resp *fasthttp.Response, latencyStart time.Time, err string, results chan<- *Result) {
-	latency := time.Now().Sub(latencyStart)
+	latency := time.Since(latencyStart)
 	results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: err}
 }
 

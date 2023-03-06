@@ -33,6 +33,8 @@ var waitGroupResults sync.WaitGroup
 func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers int) int {
 	// Default exit code
 	var exitCode int = 0
+	// Minimal internal jitter
+	const jitter = 5 * time.Millisecond
 
 	// Send requests for the HTTP client workers to pick up on this channel
 	requests := make(chan *request, numWorkers)
@@ -44,7 +46,6 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 
 	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
-
 	if err != nil {
 		panic(err)
 	}
@@ -79,15 +80,26 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 			break
 		}
 
-		// The pacer decides how long to wait between requests
 		waitGroupResults.Add(1)
-		waitDuration := pacer.waitDuration(req.Timestamp)
-		time.Sleep(waitDuration)
+
+		duration := pacer.waitDuration(req.Timestamp)
+		// This is meant to utilize the delay that occurs internally when deserializing/parsing/etc,
+		// as well as any minor internal fluctuations.
+		if duration >= jitter {
+			time.Sleep(duration)
+		}
+
+		// curRLen := len(requests)
+		// if curRLen > 0 && curRLen >= prevRLen {
+		// 	fmt.Printf("Queue is overflow. Consider to increase workers or slow down request rate. Requests %d\n", curRLen)
+		// }
+		// prevRLen = curRLen
+
 		requests <- req
 	}
 
-	if scanner.Err() != nil {
-		panic(scanner.Err())
+	if err := scanner.Err(); err != nil {
+		panic(err)
 	}
 
 	waitGroupResults.Wait()
