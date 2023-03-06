@@ -19,6 +19,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
+	"encoding/json"
+	"fmt"
 	"net"
 	"time"
 
@@ -32,7 +34,7 @@ type Result struct {
 	ErrorMsg   string        `json:"error"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout int) {
+func startClientWorkers(numWorkers int, requests <-chan *request, results chan *Result, dryRun bool, timeout int, silent bool) {
 	client := &fasthttp.Client{
 		Name:            "ripley",
 		MaxConnsPerHost: numWorkers,
@@ -43,6 +45,7 @@ func startClientWorkers(numWorkers int, requests <-chan *request, results chan<-
 
 	for i := 0; i < numWorkers; i++ {
 		go doHttpRequest(client, requests, results, dryRun)
+		go handleResult(results, silent)
 	}
 }
 
@@ -76,4 +79,20 @@ func doHttpRequest(client *fasthttp.Client, requests <-chan *request, results ch
 func sendResult(req *request, resp *fasthttp.Response, latencyStart time.Time, err string, results chan<- *Result) {
 	latency := time.Now().Sub(latencyStart)
 	results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: err}
+}
+
+func handleResult(results <-chan *Result, silent bool) {
+	for result := range results {
+		waitGroupResults.Done()
+
+		if !silent {
+			jsonResult, err := json.Marshal(result)
+
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Println(string(jsonResult))
+		}
+	}
 }

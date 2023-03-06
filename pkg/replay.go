@@ -27,18 +27,19 @@ import (
 	"time"
 )
 
+// Ensures we have handled all HTTP request results before exiting
+var waitGroupResults sync.WaitGroup
+
 func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers int) int {
 	// Default exit code
 	var exitCode int = 0
-	// Ensures we have handled all HTTP request results before exiting
-	var waitGroup sync.WaitGroup
 
 	// Send requests for the HTTP client workers to pick up on this channel
-	requests := make(chan *request)
+	requests := make(chan *request, numWorkers)
 	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
-	results := make(chan *Result)
+	results := make(chan *Result, numWorkers)
 	defer close(results)
 
 	// The pacer controls the rate of replay
@@ -53,7 +54,7 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	scanner := bufio.NewScanner(reader)
 
 	// Start HTTP client goroutine pool
-	startClientWorkers(numWorkers, requests, results, dryRun, timeout)
+	startClientWorkers(numWorkers, requests, results, dryRun, timeout, silent)
 	pacer.start()
 
 	for scanner.Scan() {
@@ -79,39 +80,16 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 		}
 
 		// The pacer decides how long to wait between requests
+		waitGroupResults.Add(1)
 		waitDuration := pacer.waitDuration(req.Timestamp)
 		time.Sleep(waitDuration)
 		requests <- req
-		waitGroup.Add(1)
-
-		// Goroutine to handle the  HTTP client result
-		go func() {
-			defer waitGroup.Done()
-
-			result := <-results
-
-			// If there's a panic elsewhere, this channel can return nil
-			if result == nil {
-				return
-			}
-
-			jsonResult, err := json.Marshal(result)
-
-			if err != nil {
-				panic(err)
-			}
-
-			if !silent {
-				fmt.Println(string(jsonResult))
-			}
-		}()
 	}
 
 	if scanner.Err() != nil {
 		panic(scanner.Err())
 	}
 
-	waitGroup.Wait()
-
+	waitGroupResults.Wait()
 	return exitCode
 }
