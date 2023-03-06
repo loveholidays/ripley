@@ -15,6 +15,5 @@ RUN apk add ca-certificates
 
 COPY --from=build /ripley /usr/bin/ripley
 # COPY --from=build /dummyweb /usr/bin/dummyweb
-ADD etc/requests-owlbot-test-ep.jsonl /
 
 ENTRYPOINT ["/usr/bin/ripley"]
