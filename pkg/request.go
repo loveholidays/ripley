@@ -19,11 +19,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
 
 var (
@@ -38,22 +38,21 @@ type request struct {
 	Headers   map[string]string `json:"headers"`
 }
 
-func (r *request) httpRequest() (*http.Request, error) {
-	req, err := http.NewRequest(r.Method, r.Url, bytes.NewReader([]byte(r.Body)))
-
-	if err != nil {
-		return nil, err
-	}
+func (r *request) fasthttpRequest() *fasthttp.Request {
+	req := fasthttp.AcquireRequest()
+	req.Header.SetMethod(r.Method)
+	req.SetRequestURI(r.Url)
+	req.SetBody([]byte(r.Body))
 
 	for k, v := range r.Headers {
-		req.Header.Add(k, v)
+		req.Header.Set(k, v)
 	}
 
-	if host := req.Header.Get("Host"); host != "" {
-		req.Host = host
+	if host := req.Header.Peek("Host"); len(host) > 0 {
+		req.SetHost(string(host))
 	}
 
-	return req, nil
+	return req
 }
 
 func unmarshalRequest(jsonRequest []byte) (*request, error) {

@@ -19,9 +19,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"io"
-	"net/http"
+	"net"
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
 
 type Result struct {
@@ -31,56 +32,53 @@ type Result struct {
 	ErrorMsg   string        `json:"error"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout int) {
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
+func startClientWorkers(numWorkers int, requests <-chan *request, results chan *Result, dryRun bool, timeout int, silent bool) {
+	client := &fasthttp.Client{
+		Name:            "ripley",
+		MaxConnsPerHost: numWorkers,
+		Dial: func(addr string) (net.Conn, error) {
+			return fasthttp.DialTimeout(addr, time.Duration(timeout)*time.Second)
 		},
 	}
 
-	for i := 0; i <= numWorkers; i++ {
+	for i := 0; i < numWorkers; i++ {
 		go doHttpRequest(client, requests, results, dryRun)
 	}
 }
 
-func doHttpRequest(client *http.Client, requests <-chan *request, results chan<- *Result, dryRun bool) {
+func doHttpRequest(client *fasthttp.Client, requests <-chan *request, results chan<- *Result, dryRun bool) {
 	for req := range requests {
 		latencyStart := time.Now()
 
 		if dryRun {
-			sendResult(req, &http.Response{}, latencyStart, "", results)
+			sendResult(req, &fasthttp.Response{}, latencyStart, "", results)
 		} else {
 			go func() {
-				httpReq, err := req.httpRequest()
+				httpReq := req.fasthttpRequest()
+				//Add the "Connection: keep-alive" header forcefully to servers that do not fully comply with HTTP1.1
+				httpReq.Header.Set("Connection", "keep-alive")
+				httpRes := fasthttp.AcquireResponse()
+				defer func() {
+					fasthttp.ReleaseRequest(httpReq)
+					fasthttp.ReleaseResponse(httpRes)
+				}()
 
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
+				if err := client.Do(httpReq, httpRes); err != nil {
+					sendResult(req, httpRes, latencyStart, err.Error(), results)
+				} else {
+					sendResult(req, httpRes, latencyStart, "", results)
 				}
-
-				resp, err := client.Do(httpReq)
-
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
-				}
-
-				_, err = io.ReadAll(resp.Body)
-				defer resp.Body.Close()
-
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
-				}
-
-				sendResult(req, resp, latencyStart, "", results)
 			}()
 		}
 	}
 }
 
-func sendResult(req *request, resp *http.Response, latencyStart time.Time, err string, results chan<- *Result) {
+// func sendResult(req *request, resp *fasthttp.Response, latencyStart time.Time, err string, results chan<- *Result) {
+// 	latency := time.Since(latencyStart)
+// 	results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: err}
+// }
+
+func sendResult(req *request, resp *fasthttp.Response, latencyStart time.Time, err string, results chan<- *Result) {
 	latency := time.Now().Sub(latencyStart)
-	results <- &Result{StatusCode: resp.StatusCode, Latency: latency, Request: req, ErrorMsg: err}
+	results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: err}
 }

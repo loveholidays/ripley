@@ -49,7 +49,8 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	}
 
 	// Read request JSONL input from STDIN
-	scanner := bufio.NewScanner(os.Stdin)
+	reader := bufio.NewReaderSize(os.Stdin, 1024*1024)
+	scanner := bufio.NewScanner(reader)
 
 	// Start HTTP client goroutine pool
 	startClientWorkers(numWorkers, requests, results, dryRun, timeout)
