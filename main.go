@@ -20,6 +20,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -29,6 +30,7 @@ import (
 
 func main() {
 	paceStr := flag.String("pace", "10s@1", `[duration]@[rate], e.g. "1m@1 30s@1.5 1h@2"`)
+	target := flag.String("target", "", `Comma-separated list of upstream HTTP server host addresses, which are passed to Dial in a round-robin manner.`)
 	silent := flag.Bool("silent", false, "Suppress output")
 	dryRun := flag.Bool("dry-run", false, "Consume input but do not send HTTP requests to targets")
 	timeout := flag.Int("timeout", 10, "HTTP client timeout in seconds")
@@ -36,9 +38,19 @@ func main() {
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 	numWorkers := flag.Int("workers", 1000, "Number of client workers to use")
 
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s -target string\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
 
-	exitCode := ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers)
+	if *target == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	exitCode := ripley.Replay(*target, *paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers)
 	defer os.Exit(exitCode)
 
 	if *memprofile != "" {

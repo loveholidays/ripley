@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -34,13 +35,23 @@ type Result struct {
 	ErrorMsg   string        `json:"error"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan *Result, dryRun bool, timeout int, silent bool) {
-	client := &fasthttp.Client{
-		Name:            "ripley",
-		MaxConnsPerHost: numWorkers,
+func startClientWorkers(target string, numWorkers int, requests <-chan *request, results chan *Result, dryRun bool, timeout int, silent bool) {
+	up, err := url.Parse(target)
+	if err != nil {
+		panic(err)
+	}
+
+	client := &fasthttp.HostClient{
+		Name:         "ripley",
+		Addr:         up.Host,
+		IsTLS:        up.Scheme == "https",
+		MaxConns:     numWorkers,
+		ReadTimeout:  time.Duration(timeout) * time.Second,
+		WriteTimeout: time.Duration(timeout) * time.Second,
 		Dial: func(addr string) (net.Conn, error) {
 			return fasthttp.DialTimeout(addr, time.Duration(timeout)*time.Second)
 		},
+		RetryIf: func(request *fasthttp.Request) bool { return false },
 	}
 
 	for i := 0; i < numWorkers; i++ {
@@ -49,7 +60,7 @@ func startClientWorkers(numWorkers int, requests <-chan *request, results chan *
 	}
 }
 
-func doHttpRequest(client *fasthttp.Client, requests <-chan *request, results chan<- *Result, dryRun bool) {
+func doHttpRequest(client *fasthttp.HostClient, requests <-chan *request, results chan<- *Result, dryRun bool) {
 	for req := range requests {
 		latencyStart := time.Now()
 
