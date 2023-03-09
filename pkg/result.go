@@ -5,32 +5,45 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/VictoriaMetrics/metrics"
 	"github.com/valyala/fasthttp"
 )
 
 type Result struct {
-	StatusCode int           `json:"statusCode"`
-	Latency    time.Duration `json:"latency"`
-	Request    *request      `json:"request"`
-	ErrorMsg   string        `json:"error"`
+	StatusCode int           `json:"StatusCode"`
+	Latency    time.Duration `json:"Latency"`
+	Request    *request      `json:"Request"`
+	ErrorMsg   string        `json:"Error"`
 }
 
-func measureResult(opts Options, req *request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
+func measureResult(opts *Options, req *request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
 	latency := time.Since(latencyStart)
-	if err != nil {
-		results <- &Result{StatusCode: -1, Latency: latency, Request: req, ErrorMsg: err.Error()}
-	} else {
-		results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: ""}
+	var statusCode int
+	var errorMsg string
+
+	switch {
+	case err != nil:
+		statusCode = -1
+		errorMsg = err.Error()
+	default:
+		statusCode = resp.StatusCode()
+		errorMsg = ""
+	}
+
+	results <- &Result{
+		StatusCode: statusCode,
+		Latency:    latency,
+		Request:    req,
+		ErrorMsg:   errorMsg,
 	}
 }
 
-func handleResult(opts Options, results <-chan *Result) {
+func handleResult(opts *Options, results <-chan *Result) {
 	for result := range results {
-		waitGroupResults.Done()
+		requests_duration_seconds := getOrCreateRequestDurationSummary(result.Request.Address)
+		requests_duration_seconds.Update(result.Latency.Seconds())
 
-		requestDuration.Update(result.Latency.Seconds())
-		metrics.GetOrCreateCounter(fmt.Sprintf(`response_code{status="%d"}`, result.StatusCode)).Inc()
+		response_code := getOrCreateResponseCodeCounter(result.StatusCode, result.Request.Address)
+		response_code.Inc()
 
 		if !opts.Silent {
 			jsonResult, err := json.Marshal(result)
@@ -41,5 +54,7 @@ func handleResult(opts Options, results <-chan *Result) {
 
 			fmt.Println(string(jsonResult))
 		}
+
+		waitGroupResults.Done()
 	}
 }

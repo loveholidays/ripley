@@ -54,7 +54,7 @@ func main() {
 
 	flag.Parse()
 
-	exitCode := ripley.Replay(opts)
+	exitCode := ripley.Replay(&opts)
 	defer os.Exit(exitCode)
 
 	if opts.Memprofile != "" {

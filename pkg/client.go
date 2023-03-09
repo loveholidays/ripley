@@ -19,7 +19,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"net/url"
 	"sync"
 	"time"
 
@@ -31,7 +30,7 @@ var (
 	clientsPool sync.Map
 )
 
-func startClientWorkers(opts Options, requests <-chan *request, results chan *Result) {
+func startClientWorkers(opts *Options, requests <-chan *request, results chan *Result) {
 	go metricsServer(opts)
 
 	for i := 0; i < opts.NumWorkers; i++ {
@@ -40,19 +39,9 @@ func startClientWorkers(opts Options, requests <-chan *request, results chan *Re
 	}
 }
 
-func getOrCreateHttpClient(opts Options, req *request) (*fasthttp.HostClient, error) {
-	// parse URL to get host address
-	up, err := url.Parse(req.Url)
-	if err != nil {
-		return nil, err
-	}
-
-	if up.Port() == "" {
-		up.Host = up.Host + ":80"
-	}
-
+func getOrCreateHttpClient(opts *Options, req *request) (*fasthttp.HostClient, error) {
 	// check if a PipelineClient instance is already available in the pool
-	if val, ok := clientsPool.Load(up.Host); ok {
+	if val, ok := clientsPool.Load(req.Address); ok {
 		if client, ok := val.(*fasthttp.HostClient); ok {
 			return client, nil
 		}
@@ -60,11 +49,11 @@ func getOrCreateHttpClient(opts Options, req *request) (*fasthttp.HostClient, er
 
 	// create a new PipelineClient instance
 	client := &fasthttp.HostClient{
-		Addr:                up.Host,
+		Addr:                req.Address,
 		Name:                "ripley",
 		MaxConns:            opts.NumWorkers,
 		ConnPoolStrategy:    fasthttp.LIFO,
-		IsTLS:               up.Scheme == "https",
+		IsTLS:               req.IsTLS,
 		MaxConnWaitTimeout:  time.Duration(opts.Timeout) * time.Second,
 		MaxConnDuration:     time.Duration(opts.Timeout) * time.Second,
 		MaxIdleConnDuration: time.Duration(opts.Timeout) * time.Second,
@@ -74,7 +63,7 @@ func getOrCreateHttpClient(opts Options, req *request) (*fasthttp.HostClient, er
 	}
 
 	// add the new PipelineClient instance to the pool
-	clientsPool.Store(up.Host, client)
+	clientsPool.Store(req.Address, client)
 
 	return client, nil
 }

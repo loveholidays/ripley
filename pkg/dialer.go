@@ -17,13 +17,13 @@ type CountingConnection struct {
 	readBytes         *metrics.Counter
 }
 
-func CountingDialer(opts Options) fasthttp.DialFunc {
+func CountingDialer(opts *Options) fasthttp.DialFunc {
 	return func(addr string) (net.Conn, error) {
-		failedConnections := GetOrCreateFailedConnectionsCounter(addr)
-		openConnections := GetOrCreateOpenConnectionsCounter(addr)
-		closedConnections := GetOrCreateClosedConnectionsCounter(addr)
-		writeBytes := GetOrCreateWriteBytesCounter(addr)
-		readBytes := GetOrCreateReadBytesCounter(addr)
+		failedConnections := getOrCreateFailedConnectionsCounter(addr)
+		openConnections := getOrCreateOpenConnectionsCounter(addr)
+		closedConnections := getOrCreateClosedConnectionsCounter(addr)
+		writeBytes := getOrCreateWriteBytesCounter(addr)
+		readBytes := getOrCreateReadBytesCounter(addr)
 
 		tcpDialer := &fasthttp.TCPDialer{Concurrency: opts.NumWorkers, DNSCacheDuration: 24 * time.Hour}
 		conn, err := tcpDialer.DialTimeout(addr, time.Duration(opts.TimeoutConnection)*time.Second)

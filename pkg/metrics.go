@@ -14,13 +14,7 @@ const defaultSummaryWindow = 5 * time.Minute
 
 var defaultSummaryQuantiles = []float64{0.5, 0.9, 0.95, 0.99, 1}
 
-// Register various metrics.
-var (
-	// Register summary with a single label.
-	requestDuration = metrics.NewSummaryExt(`requests_duration_seconds`, defaultSummaryWindow, defaultSummaryQuantiles)
-)
-
-func metricsServer(opts Options) {
+func metricsServer(opts *Options) {
 	if !opts.MetricsServerEnable {
 		return
 	}
@@ -34,22 +28,33 @@ func metricsServer(opts Options) {
 		panic(err)
 	}
 }
-func GetOrCreateFailedConnectionsCounter(addr string) *metrics.Counter {
+
+// requestDuration = metrics.NewSummaryExt(`requests_duration_seconds`, defaultSummaryWindow, defaultSummaryQuantiles)
+
+func getOrCreateRequestDurationSummary(addr string) *metrics.Summary {
+	return metrics.GetOrCreateSummaryExt(fmt.Sprintf(`requests_duration_seconds{addr="%s"}`, addr), defaultSummaryWindow, defaultSummaryQuantiles)
+}
+
+func getOrCreateResponseCodeCounter(code int, addr string) *metrics.Counter {
+	return metrics.GetOrCreateCounter(fmt.Sprintf(`response_code{status="%d", addr="%s"}`, code, addr))
+}
+
+func getOrCreateFailedConnectionsCounter(addr string) *metrics.Counter {
 	return metrics.GetOrCreateCounter(fmt.Sprintf(`connections_failed{addr="%s"}`, addr))
 }
 
-func GetOrCreateOpenConnectionsCounter(addr string) *metrics.Counter {
+func getOrCreateOpenConnectionsCounter(addr string) *metrics.Counter {
 	return metrics.GetOrCreateCounter(fmt.Sprintf(`connections_opened{addr="%s"}`, addr))
 }
 
-func GetOrCreateClosedConnectionsCounter(addr string) *metrics.Counter {
+func getOrCreateClosedConnectionsCounter(addr string) *metrics.Counter {
 	return metrics.GetOrCreateCounter(fmt.Sprintf(`connections_closed{addr="%s"}`, addr))
 }
 
-func GetOrCreateWriteBytesCounter(addr string) *metrics.Counter {
+func getOrCreateWriteBytesCounter(addr string) *metrics.Counter {
 	return metrics.GetOrCreateCounter(fmt.Sprintf(`connections_write_bytes{addr="%s"}`, addr))
 }
 
-func GetOrCreateReadBytesCounter(addr string) *metrics.Counter {
+func getOrCreateReadBytesCounter(addr string) *metrics.Counter {
 	return metrics.GetOrCreateCounter(fmt.Sprintf(`connections_read_bytes{addr="%s"}`, addr))
 }

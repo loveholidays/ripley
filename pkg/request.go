@@ -20,6 +20,7 @@ package ripley
 
 import (
 	"fmt"
+	"net/url"
 	"time"
 	"unsafe"
 
@@ -32,11 +33,13 @@ var (
 )
 
 type request struct {
-	Method    string            `json:"method"`
-	Url       string            `json:"url"`
-	Body      string            `json:"body"`
-	Timestamp time.Time         `json:"timestamp"`
-	Headers   map[string]string `json:"headers"`
+	Address   string            `json:"Address"`
+	IsTLS     bool              `json:"IsTLS"`
+	Method    string            `json:"Method"`
+	Url       string            `json:"Url"`
+	Body      string            `json:"Body"`
+	Timestamp time.Time         `json:"Timestamp"`
+	Headers   map[string]string `json:"Headers"`
 }
 
 func (r *request) fasthttpRequest() *fasthttp.Request {
@@ -51,7 +54,7 @@ func (r *request) fasthttpRequest() *fasthttp.Request {
 	}
 
 	if host := req.Header.Peek("Host"); len(host) > 0 {
-		req.SetHost(string(host))
+		req.SetHost(b2s(host))
 	}
 
 	return req
@@ -65,11 +68,26 @@ func unmarshalRequest(jsonRequest []byte) (*request, error) {
 	}
 
 	req := &request{
-		Method:  string(v.GetStringBytes("method")),
-		Url:     string(v.GetStringBytes("url")),
-		Body:    string(v.GetStringBytes("body")),
+		Method:  b2s(v.GetStringBytes("method")),
+		Url:     b2s(v.GetStringBytes("url")),
+		Body:    b2s(v.GetStringBytes("body")),
 		Headers: make(map[string]string),
 	}
+
+	if req.Url == "" {
+		return nil, fmt.Errorf("missing required key: url")
+	}
+
+	// Parse URL
+	up, err := url.Parse(req.Url)
+	if err != nil {
+		return nil, err
+	}
+	req.Address = up.Host
+	if up.Port() == "" {
+		req.Address += ":80"
+	}
+	req.IsTLS = up.Scheme == "https"
 
 	// Validate
 	if !validMethod(req.Method) {
@@ -79,12 +97,8 @@ func unmarshalRequest(jsonRequest []byte) (*request, error) {
 	// Parse headers
 	headers := v.GetObject("headers")
 	headers.Visit(func(k []byte, v *fastjson.Value) {
-		req.Headers[string(k)] = string(v.GetStringBytes())
+		req.Headers[b2s(k)] = b2s(v.GetStringBytes())
 	})
-
-	if req.Url == "" {
-		return nil, fmt.Errorf("missing required key: url")
-	}
 
 	timestampVal := v.GetStringBytes("timestamp")
 	if timestampVal == nil {
@@ -109,7 +123,7 @@ func validMethod(requestMethod string) bool {
 	return false
 }
 
-func doHttpRequest(opts Options, requests <-chan *request, results chan<- *Result) {
+func doHttpRequest(opts *Options, requests <-chan *request, results chan<- *Result) {
 	for req := range requests {
 		latencyStart := time.Now()
 		if opts.DryRun {

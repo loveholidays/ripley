@@ -47,7 +47,7 @@ type Options struct {
 var waitGroupResults sync.WaitGroup
 
 // func Replay(target string, phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers int, printStat bool, pushStat bool, pushStatAddress string, pushStatInterval int) int {
-func Replay(opts Options) int {
+func Replay(opts *Options) int {
 	// Default exit code
 	var exitCode int = 0
 
