@@ -59,6 +59,7 @@ func (p *pacer) onPhaseElapsed() {
 
 	if len(p.phases) == 0 {
 		p.done = true
+		updatePacerMetrics(&phase{duration: 0, rate: 0})
 	} else {
 		updatePacerMetrics(p.phases[0])
 
