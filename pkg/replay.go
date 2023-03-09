@@ -25,25 +25,42 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/VictoriaMetrics/metrics"
 )
+
+type Options struct {
+	Pace                string
+	Silent              bool
+	DryRun              bool
+	Timeout             int
+	TimeoutConnection   int
+	Strict              bool
+	Memprofile          string
+	NumWorkers          int
+	PrintStat           bool
+	MetricsServerEnable bool
+	MetricsServerAddr   string
+}
 
 // Ensures we have handled all HTTP request results before exiting
 var waitGroupResults sync.WaitGroup
 
-func Replay(target string, phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers int) int {
+// func Replay(target string, phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers int, printStat bool, pushStat bool, pushStatAddress string, pushStatInterval int) int {
+func Replay(opts Options) int {
 	// Default exit code
 	var exitCode int = 0
 
 	// Send requests for the HTTP client workers to pick up on this channel
-	requests := make(chan *request, numWorkers)
+	requests := make(chan *request, opts.NumWorkers)
 	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
-	results := make(chan *Result, numWorkers)
+	results := make(chan *Result, opts.NumWorkers)
 	defer close(results)
 
 	// The pacer controls the rate of replay
-	pacer, err := newPacer(phasesStr)
+	pacer, err := newPacer(opts.Pace)
 	if err != nil {
 		panic(err)
 	}
@@ -53,7 +70,7 @@ func Replay(target string, phasesStr string, silent, dryRun bool, timeout int, s
 	scanner := bufio.NewScanner(reader)
 
 	// Start HTTP client goroutine pool
-	startClientWorkers(target, numWorkers, requests, results, dryRun, timeout, silent)
+	startClientWorkers(opts, requests, results)
 	pacer.start()
 
 	for scanner.Scan() {
@@ -61,14 +78,14 @@ func Replay(target string, phasesStr string, silent, dryRun bool, timeout int, s
 		if err != nil {
 			exitCode = 126
 			result, _ := json.Marshal(Result{
-				StatusCode: 0,
+				StatusCode: -1,
 				Latency:    0,
 				Request:    req,
 				ErrorMsg:   fmt.Sprintf("%v", err),
 			})
 			fmt.Println(string(result))
 
-			if strict {
+			if opts.Strict {
 				panic(err)
 			}
 			continue
@@ -91,5 +108,10 @@ func Replay(target string, phasesStr string, silent, dryRun bool, timeout int, s
 	}
 
 	waitGroupResults.Wait()
+
+	if opts.PrintStat {
+		metrics.WritePrometheus(os.Stdout, false)
+	}
+
 	return exitCode
 }

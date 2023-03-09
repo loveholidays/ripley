@@ -19,11 +19,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
+	"unsafe"
 
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fastjson"
 )
 
 var (
@@ -40,6 +41,7 @@ type request struct {
 
 func (r *request) fasthttpRequest() *fasthttp.Request {
 	req := fasthttp.AcquireRequest()
+
 	req.Header.SetMethod(r.Method)
 	req.SetRequestURI(r.Url)
 	req.SetBody([]byte(r.Body))
@@ -56,25 +58,44 @@ func (r *request) fasthttpRequest() *fasthttp.Request {
 }
 
 func unmarshalRequest(jsonRequest []byte) (*request, error) {
-	req := &request{}
-	err := json.Unmarshal(jsonRequest, &req)
-
+	var p fastjson.Parser
+	v, err := p.ParseBytes(jsonRequest)
 	if err != nil {
-		return req, err
+		return nil, err
+	}
+
+	req := &request{
+		Method:  string(v.GetStringBytes("method")),
+		Url:     string(v.GetStringBytes("url")),
+		Body:    string(v.GetStringBytes("body")),
+		Headers: make(map[string]string),
 	}
 
 	// Validate
 	if !validMethod(req.Method) {
-		return req, fmt.Errorf("invalid method: %s", req.Method)
+		return nil, fmt.Errorf("invalid method: %s", req.Method)
 	}
+
+	// Parse headers
+	headers := v.GetObject("headers")
+	headers.Visit(func(k []byte, v *fastjson.Value) {
+		req.Headers[string(k)] = string(v.GetStringBytes())
+	})
 
 	if req.Url == "" {
-		return req, fmt.Errorf("missing required key: url")
+		return nil, fmt.Errorf("missing required key: url")
 	}
 
-	if req.Timestamp.IsZero() {
+	timestampVal := v.GetStringBytes("timestamp")
+	if timestampVal == nil {
 		return req, fmt.Errorf("missing required key: timestamp")
 	}
+
+	timestamp, err := time.Parse(time.RFC3339Nano, b2s(timestampVal))
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp: %v", timestamp)
+	}
+	req.Timestamp = timestamp
 
 	return req, nil
 }
@@ -86,4 +107,32 @@ func validMethod(requestMethod string) bool {
 		}
 	}
 	return false
+}
+
+func doHttpRequest(opts Options, requests <-chan *request, results chan<- *Result) {
+	for req := range requests {
+		latencyStart := time.Now()
+		if opts.DryRun {
+			measureResult(opts, req, &fasthttp.Response{}, latencyStart, nil, results)
+		} else {
+			httpReq := req.fasthttpRequest()
+			httpResp := fasthttp.AcquireResponse()
+
+			client, err := getOrCreateHttpClient(opts, req)
+			if err != nil {
+				measureResult(opts, req, httpResp, latencyStart, err, results)
+				return
+			}
+
+			err = client.DoTimeout(httpReq, httpResp, time.Duration(opts.Timeout)*time.Second)
+			measureResult(opts, req, httpResp, latencyStart, err, results)
+
+			fasthttp.ReleaseRequest(httpReq)
+			fasthttp.ReleaseResponse(httpResp)
+		}
+	}
+}
+
+func b2s(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }

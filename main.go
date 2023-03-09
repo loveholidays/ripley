@@ -21,22 +21,31 @@ package main
 import (
 	"flag"
 	"fmt"
+	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"runtime"
 	"runtime/pprof"
+	"syscall"
 
 	ripley "github.com/loveholidays/ripley/pkg"
 )
 
 func main() {
-	paceStr := flag.String("pace", "10s@1", `[duration]@[rate], e.g. "1m@1 30s@1.5 1h@2"`)
-	target := flag.String("target", "", `Comma-separated list of upstream HTTP server host addresses, which are passed to Dial in a round-robin manner.`)
-	silent := flag.Bool("silent", false, "Suppress output")
-	dryRun := flag.Bool("dry-run", false, "Consume input but do not send HTTP requests to targets")
-	timeout := flag.Int("timeout", 10, "HTTP client timeout in seconds")
-	strict := flag.Bool("strict", false, "Panic on bad input")
-	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
-	numWorkers := flag.Int("workers", 1000, "Number of client workers to use")
+	var opts ripley.Options
+
+	flag.StringVar(&opts.Pace, "pace", "10s@1", `[duration]@[rate], e.g. "1m@1 30s@1.5 1h@2"`)
+	flag.BoolVar(&opts.Silent, "silent", false, "Suppress output")
+	flag.BoolVar(&opts.DryRun, "dry-run", false, "Consume input but do not send HTTP requests to targets")
+	flag.IntVar(&opts.Timeout, "timeout", 10, "HTTP client request timeout in seconds")
+	flag.IntVar(&opts.TimeoutConnection, "timeoutConnection", 3, "HTTP client connetion timeout in seconds")
+	flag.BoolVar(&opts.Strict, "strict", false, "Panic on bad input")
+	flag.StringVar(&opts.Memprofile, "memprofile", "", "Write memory profile to `file` before exit")
+	flag.IntVar(&opts.NumWorkers, "workers", 10, "Number of client workers to use")
+
+	flag.BoolVar(&opts.PrintStat, "printStat", false, "Print statistics to stdout at the end")
+	flag.BoolVar(&opts.MetricsServerEnable, "metricsServerEnable", false, "Enable metrics server. Server prometheus statistics on /metrics endpoint")
+	flag.StringVar(&opts.MetricsServerAddr, "metricsServerAddr", "0.0.0.0:8081", "Metrics server listen address")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s -target string\n", os.Args[0])
@@ -45,16 +54,11 @@ func main() {
 
 	flag.Parse()
 
-	if *target == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	exitCode := ripley.Replay(*target, *paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers)
+	exitCode := ripley.Replay(opts)
 	defer os.Exit(exitCode)
 
-	if *memprofile != "" {
-		f, err := os.Create(*memprofile)
+	if opts.Memprofile != "" {
+		f, err := os.Create(opts.Memprofile)
 
 		if err != nil {
 			panic(err)
@@ -66,5 +70,10 @@ func main() {
 		if err := pprof.WriteHeapProfile(f); err != nil {
 			panic(err)
 		}
+
+		// Wait for a signal to stop the server
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		<-sig
 	}
 }

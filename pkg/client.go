@@ -19,91 +19,62 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"encoding/json"
-	"fmt"
-	"net"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/valyala/fasthttp"
 )
 
-type Result struct {
-	StatusCode int           `json:"statusCode"`
-	Latency    time.Duration `json:"latency"`
-	Request    *request      `json:"request"`
-	ErrorMsg   string        `json:"error"`
+var (
+	// pool of PipelineClient instances, indexed by host address
+	clientsPool sync.Map
+)
+
+func startClientWorkers(opts Options, requests <-chan *request, results chan *Result) {
+	go metricsServer(opts)
+
+	for i := 0; i < opts.NumWorkers; i++ {
+		go doHttpRequest(opts, requests, results)
+		go handleResult(opts, results)
+	}
 }
 
-func startClientWorkers(target string, numWorkers int, requests <-chan *request, results chan *Result, dryRun bool, timeout int, silent bool) {
-	up, err := url.Parse(target)
+func getOrCreateHttpClient(opts Options, req *request) (*fasthttp.HostClient, error) {
+	// parse URL to get host address
+	up, err := url.Parse(req.Url)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
+	if up.Port() == "" {
+		up.Host = up.Host + ":80"
+	}
+
+	// check if a PipelineClient instance is already available in the pool
+	if val, ok := clientsPool.Load(up.Host); ok {
+		if client, ok := val.(*fasthttp.HostClient); ok {
+			return client, nil
+		}
+	}
+
+	// create a new PipelineClient instance
 	client := &fasthttp.HostClient{
-		Name:         "ripley",
-		Addr:         up.Host,
-		IsTLS:        up.Scheme == "https",
-		MaxConns:     numWorkers,
-		ReadTimeout:  time.Duration(timeout) * time.Second,
-		WriteTimeout: time.Duration(timeout) * time.Second,
-		Dial: func(addr string) (net.Conn, error) {
-			return fasthttp.DialTimeout(addr, time.Duration(timeout)*time.Second)
-		},
-		RetryIf: func(request *fasthttp.Request) bool { return false },
+		Addr:                up.Host,
+		Name:                "ripley",
+		MaxConns:            opts.NumWorkers,
+		ConnPoolStrategy:    fasthttp.LIFO,
+		IsTLS:               up.Scheme == "https",
+		MaxConnWaitTimeout:  time.Duration(opts.Timeout) * time.Second,
+		MaxConnDuration:     time.Duration(opts.Timeout) * time.Second,
+		MaxIdleConnDuration: time.Duration(opts.Timeout) * time.Second,
+		ReadTimeout:         time.Duration(opts.Timeout) * time.Second,
+		WriteTimeout:        time.Duration(opts.Timeout) * time.Second,
+		Dial:                CountingDialer(opts),
 	}
 
-	for i := 0; i < numWorkers; i++ {
-		go doHttpRequest(client, requests, results, dryRun)
-		go handleResult(results, silent)
-	}
-}
+	// add the new PipelineClient instance to the pool
+	clientsPool.Store(up.Host, client)
 
-func doHttpRequest(client *fasthttp.HostClient, requests <-chan *request, results chan<- *Result, dryRun bool) {
-	for req := range requests {
-		latencyStart := time.Now()
-
-		if dryRun {
-			sendResult(req, &fasthttp.Response{}, latencyStart, "", results)
-		} else {
-			go func() {
-				httpReq := req.fasthttpRequest()
-				//Add the "Connection: keep-alive" header forcefully to servers that do not fully comply with HTTP1.1
-				httpReq.Header.Set("Connection", "keep-alive")
-				httpRes := fasthttp.AcquireResponse()
-				defer func() {
-					fasthttp.ReleaseRequest(httpReq)
-					fasthttp.ReleaseResponse(httpRes)
-				}()
-
-				if err := client.Do(httpReq, httpRes); err != nil {
-					sendResult(req, httpRes, latencyStart, err.Error(), results)
-				} else {
-					sendResult(req, httpRes, latencyStart, "", results)
-				}
-			}()
-		}
-	}
-}
-
-func sendResult(req *request, resp *fasthttp.Response, latencyStart time.Time, err string, results chan<- *Result) {
-	latency := time.Since(latencyStart)
-	results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: err}
-}
-
-func handleResult(results <-chan *Result, silent bool) {
-	for result := range results {
-		waitGroupResults.Done()
-
-		if !silent {
-			jsonResult, err := json.Marshal(result)
-
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println(string(jsonResult))
-		}
-	}
+	return client, nil
 }

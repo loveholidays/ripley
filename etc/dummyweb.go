@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/reuseport"
@@ -33,6 +34,8 @@ func main() {
 		LogAllErrors:    true,
 		ReadBufferSize:  1024 * 1024,
 		WriteBufferSize: 1024 * 1024,
+		ReadTimeout:     90 * time.Second,
+		WriteTimeout:    5 * time.Second,
 		Handler:         requestHandler,
 	}
 
@@ -91,7 +94,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 
 	ctx.SetContentType("application/json")
 	ctx.Response.Header.SetContentLength(len(jsonData))
-	ctx.Response.Header.Set("Connection", "keep-alive")
+	// ctx.Response.Header.Set("Connection", "keep-alive")
 	ctx.SetStatusCode(fasthttp.StatusOK)
 	ctx.Write(jsonData)
 }

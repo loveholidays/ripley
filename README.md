@@ -129,3 +129,11 @@ cat etc/requests.jsonl | ./ripley -pace "30s@1" -dry-run
 ```bash
 go test pkg/*.go
 ```
+
+## Memory profiling
+
+```
+./ripley -metricsServerEnable -printStat -memprofile dist/mem.pprof -pace 1m@10 -workers 100  < etc/requests.jsonl
+
+go tool pprof --alloc_objects ripley dist/mem.pprof
+```bash

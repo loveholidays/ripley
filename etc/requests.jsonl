@@ -1,14 +1,10 @@
-{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:50.9Z"}
-{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:51.9Z"}
-{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:52.9Z"}
-{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:53.9Z"}
-{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:54.9Z"}
-{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:55.9Z"}
-{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:56.9Z"}
-{"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T18:59:57.9Z"}
-{"url": "http://localhost:8080/", "method": "POST", "body": "{\"foo\": \"bar\"}", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:58.9Z"}
+{"url": "http://localhost:8080/localhost:8080", "method": "GET", "timestamp": "2021-11-08T18:59:50.9Z", "headers": {"Content-Type": "application/json", "Host": "example.net", "Cookies":"cookie=1234567890", "User-Agent":"Mozilla/5.0", "x-custom-header":"x-custom-header-value"}}
+{"url": "http://localhost:8081/localhost:8081", "method": "GET", "timestamp": "2021-11-08T18:59:50.9Z", "headers": {"Content-Type": "application/json", "Host": "example.net", "Cookies":"cookie=1234567890", "User-Agent":"Mozilla/5.0", "x-custom-header":"x-custom-header-value"}}
+{"url": "http://localhost:8080/localhost:8080", "method": "POST", "body": "{\"foo\": \"bar\"}", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:58.9Z"}
+{"url": "http://localhost:8081/localhost:8081", "method": "POST", "body": "{\"foo\": \"bar\"}", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:58.9Z"}
+{"url": "http://localhost:8081/", "method": "GET", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:59.9Z"}
 {"url": "http://localhost:8080/", "method": "GET", "headers": {"Accept": "text/plain"}, "timestamp": "2021-11-08T18:59:59.9Z"}
-{"url": "http://localhost:8080/", "method": "HEAD", "timestamp": "2021-11-08T19:00:00.00Z"}
+{"url": "http://localhost:8080/", "method": "HEAD", "timestamp": "2021-11-08T19:00:00.00Z", "headers": {"Connection": "close" }}
 {"url": "http://localhost:8080/", "method": "OPTIONS", "timestamp": "2021-11-08T19:00:00.01Z"}
 {"url": "http://localhost:8080/", "method": "TRACE", "timestamp": "2021-11-08T19:00:00.02Z"}
 {"url": "http://localhost:8080/", "method": "PROPFIND", "timestamp": "2021-11-08T19:00:00.03Z"}
