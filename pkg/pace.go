@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -47,6 +48,8 @@ func newPacer(phasesStr string) (*pacer, error) {
 
 func (p *pacer) start() {
 	// Run a timer for the first phase's duration
+	updatePacerMetrics(p.phases[0])
+
 	time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
 }
 
@@ -57,6 +60,8 @@ func (p *pacer) onPhaseElapsed() {
 	if len(p.phases) == 0 {
 		p.done = true
 	} else {
+		updatePacerMetrics(p.phases[0])
+
 		// Create a timer with next phase
 		time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
 	}
@@ -97,4 +102,9 @@ func parsePhases(phasesStr string) ([]*phase, error) {
 	}
 
 	return phases, nil
+}
+
+func updatePacerMetrics(p *phase) {
+	metrics_pacer_phases := getOrCreatePacerPhaseTimeCounter(fmt.Sprintf("%s@%.0f", p.duration, p.rate))
+	metrics_pacer_phases.Set(uint64(time.Now().Unix()))
 }

@@ -29,7 +29,17 @@ func metricsServer(opts *Options) {
 	}
 }
 
-// requestDuration = metrics.NewSummaryExt(`requests_duration_seconds`, defaultSummaryWindow, defaultSummaryQuantiles)
+func getOrCreatePacerPhaseTimeCounter(phase string) *metrics.Counter {
+	return metrics.GetOrCreateCounter(fmt.Sprintf(`pacer_phases{phase="%s"}`, phase))
+}
+
+func getOrCreateChannelLengthCounter(name string) *metrics.Counter {
+	return metrics.GetOrCreateCounter(fmt.Sprintf(`channel_length{channel="%s"}`, name))
+}
+
+func getOrCreateChannelCapacityCounter(name string) *metrics.Counter {
+	return metrics.GetOrCreateCounter(fmt.Sprintf(`channel_capacity{channel="%s"}`, name))
+}
 
 func getOrCreateRequestDurationSummary(addr string) *metrics.Summary {
 	return metrics.GetOrCreateSummaryExt(fmt.Sprintf(`requests_duration_seconds{addr="%s"}`, addr), defaultSummaryWindow, defaultSummaryQuantiles)
