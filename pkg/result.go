@@ -19,7 +19,7 @@ type Result struct {
 func measureResult(opts Options, req *request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
 	latency := time.Since(latencyStart)
 	if err != nil {
-		results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: err.Error()}
+		results <- &Result{StatusCode: -1, Latency: latency, Request: req, ErrorMsg: err.Error()}
 	} else {
 		results <- &Result{StatusCode: resp.StatusCode(), Latency: latency, Request: req, ErrorMsg: ""}
 	}
