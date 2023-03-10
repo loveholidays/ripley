@@ -106,6 +106,6 @@ func parsePhases(phasesStr string) ([]*phase, error) {
 }
 
 func updatePacerMetrics(p *phase) {
-	metrics_pacer_phases := getOrCreatePacerPhaseTimeCounter(fmt.Sprintf("%s@%.0f", p.duration, p.rate))
+	metrics_pacer_phases := getOrCreatePacerPhaseTimeCounter(fmt.Sprintf("%s@%.3f", p.duration, p.rate))
 	metrics_pacer_phases.Set(uint64(time.Now().Unix()))
 }

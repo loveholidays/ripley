@@ -24,8 +24,8 @@ import (
 )
 
 func TestUnrmarshalInvalidMethod(t *testing.T) {
-	jsonRequest := `{"method": "WHAT"}`
-	req, err := unmarshalRequest([]byte(jsonRequest))
+	jsonRequest := []byte(`{"method": "WHAT",  "url": "http://example.com"}`)
+	req, err := unmarshalRequest(&jsonRequest)
 
 	if req != nil {
 		t.Errorf("req = %v; want nil", req)
@@ -37,8 +37,8 @@ func TestUnrmarshalInvalidMethod(t *testing.T) {
 }
 
 func TestUnrmarshalValid(t *testing.T) {
-	jsonRequest := `{"method": "GET", "url": "http://example.com", "timestamp": "2021-11-08T18:59:59.9Z"}`
-	req, err := unmarshalRequest([]byte(jsonRequest))
+	jsonRequest := []byte(`{"method": "GET", "url": "http://example.com", "timestamp": "2021-11-08T18:59:59.9Z"}`)
+	req, err := unmarshalRequest(&jsonRequest)
 
 	if err != nil {
 		t.Errorf("err = %v; want nil", err)
@@ -64,13 +64,13 @@ func TestUnrmarshalValid(t *testing.T) {
 }
 
 func TestFasthttpRequest(t *testing.T) {
-	jsonRequest := `
+	jsonRequest := []byte(`
 	{
 		"method": "GET", "url": "http://example.com", "body":"body", "timestamp": "2021-11-08T18:59:59.9Z",
 		"headers": {"Content-Type": "application/json", "Host": "example.net", "Cookies":"cookie=1234567890", "User-Agent":"Mozilla/5.0", "x-custom-header":"x-custom-header-value"}
 	}
-	`
-	req, err := unmarshalRequest([]byte(jsonRequest))
+	`)
+	req, err := unmarshalRequest(&jsonRequest)
 	if err != nil {
 		t.Errorf("err = %v; want nil", err)
 	}

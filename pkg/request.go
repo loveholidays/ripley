@@ -60,9 +60,9 @@ func (r *request) fasthttpRequest() *fasthttp.Request {
 	return req
 }
 
-func unmarshalRequest(jsonRequest []byte) (*request, error) {
+func unmarshalRequest(jsonRequest *[]byte) (*request, error) {
 	var p fastjson.Parser
-	v, err := p.ParseBytes(jsonRequest)
+	v, err := p.ParseBytes(*jsonRequest)
 	if err != nil {
 		return nil, err
 	}

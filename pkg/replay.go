@@ -46,7 +46,6 @@ type Options struct {
 // Ensures we have handled all HTTP request results before exiting
 var waitGroupResults sync.WaitGroup
 
-// func Replay(target string, phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers int, printStat bool, pushStat bool, pushStatAddress string, pushStatInterval int) int {
 func Replay(opts *Options) int {
 	// Default exit code
 	var exitCode int = 0
@@ -74,7 +73,8 @@ func Replay(opts *Options) int {
 	pacer.start()
 
 	for scanner.Scan() {
-		req, err := unmarshalRequest(scanner.Bytes())
+		b := scanner.Bytes()
+		req, err := unmarshalRequest(&b)
 		if err != nil {
 			exitCode = 126
 			result, _ := json.Marshal(Result{
