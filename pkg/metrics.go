@@ -10,11 +10,15 @@ import (
 	"github.com/VictoriaMetrics/metrics"
 )
 
+var metricsRequestReceived = make(chan bool)
+
 const defaultSummaryWindow = 5 * time.Minute
 
 var defaultSummaryQuantiles = []float64{0.5, 0.9, 0.95, 0.99, 1}
 
 func metricsServer(opts *Options) {
+	defer close(metricsRequestReceived)
+
 	if !opts.MetricsServerEnable {
 		return
 	}
@@ -22,6 +26,10 @@ func metricsServer(opts *Options) {
 	// Expose the registered metrics at `/metrics` path.
 	http.HandleFunc("/metrics", func(w http.ResponseWriter, req *http.Request) {
 		metrics.WritePrometheus(w, true)
+		select {
+		case metricsRequestReceived <- true:
+		default:
+		}
 	})
 
 	if err := http.ListenAndServe(opts.MetricsServerAddr, nil); err != nil {

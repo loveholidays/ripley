@@ -109,6 +109,11 @@ func Replay(opts *Options) int {
 
 	waitGroupResults.Wait()
 
+	select {
+	case <-metricsRequestReceived:
+	case <-time.After(time.Duration(2) * time.Second):
+	}
+
 	if opts.PrintStat {
 		metrics.WritePrometheus(os.Stdout, false)
 	}
