@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"net/url"
 	"time"
-	"unsafe"
 
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
@@ -145,8 +144,4 @@ func doHttpRequest(opts *Options, requests <-chan *request, results chan<- *Resu
 			fasthttp.ReleaseResponse(httpResp)
 		}
 	}
-}
-
-func b2s(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
 }

@@ -76,3 +76,11 @@ func getOrCreateWriteBytesCounter(addr string) *metrics.Counter {
 func getOrCreateReadBytesCounter(addr string) *metrics.Counter {
 	return metrics.GetOrCreateCounter(fmt.Sprintf(`connections_read_bytes{addr="%s"}`, addr))
 }
+
+func metricHandleResult(result *Result) {
+	requests_duration_seconds := getOrCreateRequestDurationSummary(result.Request.Address)
+	requests_duration_seconds.Update(result.Latency.Seconds())
+
+	response_code := getOrCreateResponseCodeCounter(result.StatusCode, result.Request.Address)
+	response_code.Inc()
+}

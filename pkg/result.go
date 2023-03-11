@@ -15,6 +15,16 @@ type Result struct {
 	ErrorMsg   string        `json:"Error"`
 }
 
+func (r *Result) toJson() string {
+	j, err := json.Marshal(r)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return b2s(j)
+}
+
 func measureResult(opts *Options, req *request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
 	latency := time.Since(latencyStart)
 	var statusCode int
@@ -39,20 +49,11 @@ func measureResult(opts *Options, req *request, resp *fasthttp.Response, latency
 
 func handleResult(opts *Options, results <-chan *Result) {
 	for result := range results {
-		requests_duration_seconds := getOrCreateRequestDurationSummary(result.Request.Address)
-		requests_duration_seconds.Update(result.Latency.Seconds())
-
-		response_code := getOrCreateResponseCodeCounter(result.StatusCode, result.Request.Address)
-		response_code.Inc()
+		metricHandleResult(result)
+		storeLongestResults(result, opts)
 
 		if !opts.Silent {
-			jsonResult, err := json.Marshal(result)
-
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println(string(jsonResult))
+			fmt.Println(result.toJson())
 		}
 
 		waitGroupResults.Done()

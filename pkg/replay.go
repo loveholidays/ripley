@@ -20,11 +20,13 @@ package ripley
 
 import (
 	"bufio"
+	"container/heap"
 	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/VictoriaMetrics/metrics"
 )
@@ -41,6 +43,8 @@ type Options struct {
 	PrintStat           bool
 	MetricsServerEnable bool
 	MetricsServerAddr   string
+	NlongestPrint       bool
+	NlongestResults     int
 }
 
 // Ensures we have handled all HTTP request results before exiting
@@ -118,5 +122,16 @@ func Replay(opts *Options) int {
 		metrics.WritePrometheus(os.Stdout, false)
 	}
 
+	if opts.NlongestPrint {
+		for longestResultsHeap.Len() > 0 {
+			r := heap.Pop(longestResultsHeap)
+			fmt.Println(r.(*Result).toJson())
+		}
+	}
+
 	return exitCode
+}
+
+func b2s(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }
