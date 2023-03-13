@@ -21,7 +21,6 @@ package ripley
 import (
 	"bufio"
 	"container/heap"
-	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -82,13 +81,13 @@ func Replay(opts *Options) int {
 		req, err := unmarshalRequest(&b)
 		if err != nil {
 			exitCode = 126
-			result, _ := json.Marshal(Result{
+			result := &Result{
 				StatusCode: -1,
 				Latency:    0,
 				Request:    req,
 				ErrorMsg:   fmt.Sprintf("%v", err),
-			})
-			fmt.Println(string(result))
+			}
+			fmt.Println(result.toJson())
 
 			if opts.Strict {
 				panic(err)
