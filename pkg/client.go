@@ -25,10 +25,11 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var (
-	// pool of PipelineClient instances, indexed by host address
-	clientsPool sync.Map
-)
+type HttpClientsPool struct {
+	pool sync.Map
+}
+
+var httpClientsPool HttpClientsPool
 
 func startClientWorkers(opts *Options, requests <-chan *request, results chan *Result) {
 	go metricsServer(opts)
@@ -51,21 +52,24 @@ func startClientWorkers(opts *Options, requests <-chan *request, results chan *R
 	}()
 
 	for i := 0; i < opts.NumWorkers; i++ {
-		go doHttpRequest(opts, requests, results)
 		go handleResult(opts, results)
+		go doHttpRequest(opts, requests, results)
 	}
 }
 
 func getOrCreateHttpClient(opts *Options, req *request) (*fasthttp.HostClient, error) {
-	// check if a PipelineClient instance is already available in the pool
-	if val, ok := clientsPool.Load(req.Address); ok {
-		if client, ok := val.(*fasthttp.HostClient); ok {
-			return client, nil
-		}
+	if val, ok := httpClientsPool.pool.Load(req.Address); ok {
+		return val.(*fasthttp.HostClient), nil
 	}
 
-	// create a new PipelineClient instance
-	client := &fasthttp.HostClient{
+	// If another goroutine has stored a value before us,
+	// use the stored value instead of the one we just created
+	val, _ := httpClientsPool.pool.LoadOrStore(req.Address, httpClientsPool.createHttpClient(opts, req))
+	return val.(*fasthttp.HostClient), nil
+}
+
+func (h *HttpClientsPool) createHttpClient(opts *Options, req *request) interface{} {
+	return &fasthttp.HostClient{
 		Addr:                req.Address,
 		Name:                "ripley",
 		MaxConns:            opts.NumWorkers,
@@ -78,13 +82,4 @@ func getOrCreateHttpClient(opts *Options, req *request) (*fasthttp.HostClient, e
 		WriteTimeout:        time.Duration(opts.Timeout) * time.Second,
 		Dial:                CountingDialer(opts),
 	}
-
-	actual, loaded := clientsPool.LoadOrStore(req.Address, client)
-	if loaded {
-		if c, ok := actual.(*fasthttp.HostClient); ok {
-			return c, nil
-		}
-	}
-
-	return client, nil
 }
