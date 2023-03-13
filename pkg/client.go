@@ -79,8 +79,12 @@ func getOrCreateHttpClient(opts *Options, req *request) (*fasthttp.HostClient, e
 		Dial:                CountingDialer(opts),
 	}
 
-	// add the new PipelineClient instance to the pool
-	clientsPool.Store(req.Address, client)
+	actual, loaded := clientsPool.LoadOrStore(req.Address, client)
+	if loaded {
+		if c, ok := actual.(*fasthttp.HostClient); ok {
+			return c, nil
+		}
+	}
 
 	return client, nil
 }
