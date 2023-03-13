@@ -36,6 +36,8 @@ func main() {
 
 	flag.StringVar(&opts.Pace, "pace", "10s@1", `[duration]@[rate], e.g. "1m@1 30s@1.5 1h@2"`)
 	flag.BoolVar(&opts.Silent, "silent", false, "Suppress output")
+	flag.BoolVar(&opts.SilentHttpError, "silentHttpError", false, "Suppress HTTP errors (http codes 5xx) output")
+
 	flag.BoolVar(&opts.DryRun, "dry-run", false, "Consume input but do not send HTTP requests to targets")
 	flag.IntVar(&opts.Timeout, "timeout", 10, "HTTP client request timeout in seconds")
 	flag.IntVar(&opts.TimeoutConnection, "timeoutConnection", 3, "HTTP client connetion timeout in seconds")

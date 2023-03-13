@@ -34,6 +34,7 @@ import (
 type Options struct {
 	Pace                string
 	Silent              bool
+	SilentHttpError     bool
 	DryRun              bool
 	Timeout             int
 	TimeoutConnection   int

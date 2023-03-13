@@ -3,6 +3,7 @@ package ripley
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -47,6 +48,7 @@ func measureResult(opts *Options, req *request, resp *fasthttp.Response, latency
 	}
 }
 
+// TODO: Consider rewriting the code to use a Result Broker with multi-channel and broadcast functionality in order to improve its scalability.
 func handleResult(opts *Options, results <-chan *Result) {
 	for result := range results {
 		metricHandleResult(result)
@@ -54,6 +56,10 @@ func handleResult(opts *Options, results <-chan *Result) {
 
 		if !opts.Silent {
 			fmt.Println(result.toJson())
+		}
+
+		if !opts.SilentHttpError && result.StatusCode < 0 || (result.StatusCode >= 500 && result.StatusCode <= 599) {
+			fmt.Fprintln(os.Stderr, result.toJson())
 		}
 
 		waitGroupResults.Done()
