@@ -1,6 +1,6 @@
 module github.com/loveholidays/ripley
 
-go 1.17
+go 1.20
 
 require (
 	github.com/VictoriaMetrics/metrics v1.23.1
@@ -11,7 +11,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
-	github.com/klauspost/compress v1.16.1 // indirect
+	github.com/klauspost/compress v1.16.3 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect
