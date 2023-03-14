@@ -9,10 +9,19 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+type Response struct {
+	StatusCode int                 `json:"StatusCode"`
+	Headers    map[string][]string `json:"headers"`
+	RAddr      string              `json:"RAddr"`
+	LAddr      string              `json:"LAddr"`
+	Body       string              `json:"body"`
+}
+
 type Result struct {
 	StatusCode int           `json:"StatusCode"`
 	Latency    time.Duration `json:"Latency"`
 	Request    *request      `json:"Request"`
+	Response   *Response     `json:"Response"`
 	ErrorMsg   string        `json:"Error"`
 }
 
@@ -28,23 +37,43 @@ func (r *Result) toJson() string {
 
 func measureResult(opts *Options, req *request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
 	latency := time.Since(latencyStart)
-	var statusCode int
-	var errorMsg string
 
-	switch {
-	case err != nil:
+	var errorMsg string
+	var raddr, laddr string
+	var statusCode int = resp.StatusCode()
+
+	if err != nil {
 		statusCode = -1
 		errorMsg = err.Error()
-	default:
-		statusCode = resp.StatusCode()
-		errorMsg = ""
+	}
+
+	respHeaders := make(map[string][]string)
+	resp.Header.VisitAll(func(key, value []byte) {
+		k := b2s(key)
+		v := b2s(value)
+
+		respHeaders[k] = append(respHeaders[k], v)
+	})
+
+	if adr := resp.RemoteAddr(); adr != nil {
+		raddr = adr.String()
+	}
+	if adr := resp.LocalAddr(); adr != nil {
+		laddr = adr.String()
 	}
 
 	results <- &Result{
 		StatusCode: statusCode,
 		Latency:    latency,
 		Request:    req,
-		ErrorMsg:   errorMsg,
+		Response: &Response{
+			StatusCode: statusCode,
+			Headers:    respHeaders,
+			RAddr:      raddr,
+			LAddr:      laddr,
+			Body:       b2s(resp.Body()),
+		},
+		ErrorMsg: errorMsg,
 	}
 }
 
