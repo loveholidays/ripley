@@ -130,6 +130,7 @@ func doHttpRequest(opts *Options, requests <-chan *request, results chan<- *Resu
 		} else {
 			httpReq := req.fasthttpRequest()
 			httpResp := fasthttp.AcquireResponse()
+			httpResp.SkipBody = true
 
 			client, err := getOrCreateHttpClient(opts, req)
 			if err != nil {
