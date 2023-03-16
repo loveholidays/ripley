@@ -134,5 +134,5 @@ func Replay(opts *Options) int {
 }
 
 func b2s(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }
