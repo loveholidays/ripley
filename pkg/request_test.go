@@ -23,13 +23,18 @@ import (
 	"time"
 )
 
+func TestParseInvalidJson(t *testing.T) {
+	jsonRequest := []byte(`{}}`)
+	_, err := unmarshalRequest(&jsonRequest)
+
+	if err.Error() != `unexpected tail: "}"` {
+		t.Errorf(`err.Error() = %v; want "unexpected tail: "}""`, err.Error())
+	}
+}
+
 func TestUnrmarshalInvalidMethod(t *testing.T) {
 	jsonRequest := []byte(`{"method": "WHAT",  "url": "http://example.com"}`)
-	req, err := unmarshalRequest(&jsonRequest)
-
-	if req != nil {
-		t.Errorf("req = %v; want nil", req)
-	}
+	_, err := unmarshalRequest(&jsonRequest)
 
 	if err.Error() != "invalid method: WHAT" {
 		t.Errorf(`err.Error() = %v; want "invalid method: WHAT"`, err.Error())

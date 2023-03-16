@@ -31,7 +31,7 @@ var (
 	validMethods = [9]string{"GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"}
 )
 
-type request struct {
+type Request struct {
 	Address   string            `json:"Address"`
 	IsTLS     bool              `json:"IsTLS"`
 	Method    string            `json:"Method"`
@@ -41,7 +41,7 @@ type request struct {
 	Headers   map[string]string `json:"Headers"`
 }
 
-func (r *request) fasthttpRequest() *fasthttp.Request {
+func (r *Request) fasthttpRequest() *fasthttp.Request {
 	req := fasthttp.AcquireRequest()
 
 	req.Header.SetMethod(r.Method)
@@ -59,14 +59,14 @@ func (r *request) fasthttpRequest() *fasthttp.Request {
 	return req
 }
 
-func unmarshalRequest(jsonRequest *[]byte) (*request, error) {
+func unmarshalRequest(jsonRequest *[]byte) (*Request, error) {
 	var p fastjson.Parser
 	v, err := p.ParseBytes(*jsonRequest)
 	if err != nil {
-		return nil, err
+		return &Request{}, err
 	}
 
-	req := &request{
+	req := &Request{
 		Method:  b2s(v.GetStringBytes("method")),
 		Url:     b2s(v.GetStringBytes("url")),
 		Body:    b2s(v.GetStringBytes("body")),
@@ -74,13 +74,13 @@ func unmarshalRequest(jsonRequest *[]byte) (*request, error) {
 	}
 
 	if req.Url == "" {
-		return nil, fmt.Errorf("missing required key: url")
+		return req, fmt.Errorf("missing required key: url")
 	}
 
 	// Parse URL
 	up, err := url.Parse(req.Url)
 	if err != nil {
-		return nil, err
+		return req, err
 	}
 	req.Address = up.Host
 	if up.Port() == "" {
@@ -90,7 +90,7 @@ func unmarshalRequest(jsonRequest *[]byte) (*request, error) {
 
 	// Validate
 	if !validMethod(req.Method) {
-		return nil, fmt.Errorf("invalid method: %s", req.Method)
+		return req, fmt.Errorf("invalid method: %s", req.Method)
 	}
 
 	// Parse headers
@@ -106,7 +106,7 @@ func unmarshalRequest(jsonRequest *[]byte) (*request, error) {
 
 	timestamp, err := time.Parse(time.RFC3339Nano, b2s(timestampVal))
 	if err != nil {
-		return nil, fmt.Errorf("invalid timestamp: %v", timestamp)
+		return req, fmt.Errorf("invalid timestamp: %v", timestamp)
 	}
 	req.Timestamp = timestamp
 
@@ -122,7 +122,7 @@ func validMethod(requestMethod string) bool {
 	return false
 }
 
-func doHttpRequest(opts *Options, requests <-chan *request, results chan<- *Result) {
+func doHttpRequest(opts *Options, requests <-chan *Request, results chan<- *Result) {
 	for req := range requests {
 		latencyStart := time.Now()
 		if opts.DryRun {

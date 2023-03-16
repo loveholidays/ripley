@@ -55,7 +55,7 @@ func Replay(opts *Options) int {
 	var exitCode int = 0
 
 	// Send requests for the HTTP client workers to pick up on this channel
-	requests := make(chan *request, opts.NumWorkers)
+	requests := make(chan *Request, opts.NumWorkers)
 	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
@@ -77,29 +77,30 @@ func Replay(opts *Options) int {
 	pacer.start()
 
 	for scanner.Scan() {
+		waitGroupResults.Add(1)
+
 		b := scanner.Bytes()
 		req, err := unmarshalRequest(&b)
 		if err != nil {
 			exitCode = 126
-			result := &Result{
-				StatusCode: -1,
+			res := &Result{
+				StatusCode: -2,
 				Latency:    0,
-				Request:    req,
+				Request:    *req,
 				ErrorMsg:   fmt.Sprintf("%v", err),
 			}
-			fmt.Println(result.toJson())
 
 			if opts.Strict {
 				panic(err)
 			}
+
+			results <- res
 			continue
 		}
 
 		if pacer.done {
 			break
 		}
-
-		waitGroupResults.Add(1)
 
 		duration := pacer.waitDuration(req.Timestamp)
 		time.Sleep(duration)

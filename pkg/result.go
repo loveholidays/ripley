@@ -11,16 +11,15 @@ import (
 
 type Response struct {
 	StatusCode int                 `json:"StatusCode"`
-	Headers    map[string][]string `json:"headers"`
+	Headers    map[string][]string `json:"Headers"`
 	RAddr      string              `json:"RAddr"`
 	LAddr      string              `json:"LAddr"`
-	Body       string              `json:"body"`
 }
 
 type Result struct {
 	StatusCode int           `json:"StatusCode"`
 	Latency    time.Duration `json:"Latency"`
-	Request    *request      `json:"Request"`
+	Request    Request       `json:"Request"`
 	Response   *Response     `json:"Response"`
 	ErrorMsg   string        `json:"Error"`
 }
@@ -35,7 +34,7 @@ func (r *Result) toJson() string {
 	return b2s(j)
 }
 
-func measureResult(opts *Options, req *request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
+func measureResult(opts *Options, req *Request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
 	latency := time.Since(latencyStart)
 
 	var errorMsg string
@@ -65,13 +64,12 @@ func measureResult(opts *Options, req *request, resp *fasthttp.Response, latency
 	results <- &Result{
 		StatusCode: statusCode,
 		Latency:    latency,
-		Request:    req,
+		Request:    *req,
 		Response: &Response{
 			StatusCode: statusCode,
 			Headers:    respHeaders,
 			RAddr:      raddr,
 			LAddr:      laddr,
-			Body:       b2s(resp.Body()),
 		},
 		ErrorMsg: errorMsg,
 	}

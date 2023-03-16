@@ -31,7 +31,7 @@ type HttpClientsPool struct {
 
 var httpClientsPool HttpClientsPool
 
-func startClientWorkers(opts *Options, requests <-chan *request, results chan *Result) {
+func startClientWorkers(opts *Options, requests <-chan *Request, results chan *Result) {
 	go metricsServer(opts)
 
 	ticker := time.Tick(time.Second)
@@ -57,7 +57,7 @@ func startClientWorkers(opts *Options, requests <-chan *request, results chan *R
 	}
 }
 
-func getOrCreateHttpClient(opts *Options, req *request) (*fasthttp.HostClient, error) {
+func getOrCreateHttpClient(opts *Options, req *Request) (*fasthttp.HostClient, error) {
 	if val, ok := httpClientsPool.pool.Load(req.Address); ok {
 		return val.(*fasthttp.HostClient), nil
 	}
@@ -68,18 +68,22 @@ func getOrCreateHttpClient(opts *Options, req *request) (*fasthttp.HostClient, e
 	return val.(*fasthttp.HostClient), nil
 }
 
-func (h *HttpClientsPool) createHttpClient(opts *Options, req *request) interface{} {
+func (h *HttpClientsPool) createHttpClient(opts *Options, req *Request) interface{} {
 	return &fasthttp.HostClient{
-		Addr:                req.Address,
-		Name:                "ripley",
-		MaxConns:            opts.NumWorkers,
-		ConnPoolStrategy:    fasthttp.LIFO,
-		IsTLS:               req.IsTLS,
-		MaxConnWaitTimeout:  time.Duration(opts.Timeout) * time.Second,
-		MaxConnDuration:     time.Duration(opts.Timeout) * time.Second,
-		MaxIdleConnDuration: time.Duration(opts.Timeout) * time.Second,
-		ReadTimeout:         time.Duration(opts.Timeout) * time.Second,
-		WriteTimeout:        time.Duration(opts.Timeout) * time.Second,
-		Dial:                CountingDialer(opts),
+		Addr:                          req.Address,
+		Name:                          "ripley",
+		MaxConns:                      opts.NumWorkers,
+		ReadBufferSize:                512 * 1024,
+		WriteBufferSize:               128 * 1024,
+		ConnPoolStrategy:              fasthttp.LIFO,
+		IsTLS:                         req.IsTLS,
+		MaxConnWaitTimeout:            time.Duration(opts.Timeout) * time.Second,
+		MaxConnDuration:               time.Duration(opts.Timeout) * time.Second,
+		MaxIdleConnDuration:           time.Duration(opts.Timeout) * time.Second,
+		ReadTimeout:                   time.Duration(opts.Timeout) * time.Second,
+		WriteTimeout:                  time.Duration(opts.Timeout) * time.Second,
+		Dial:                          CountingDialer(opts),
+		DisablePathNormalizing:        true,
+		DisableHeaderNamesNormalizing: true,
 	}
 }
