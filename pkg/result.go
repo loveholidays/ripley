@@ -19,7 +19,7 @@ type Response struct {
 type Result struct {
 	StatusCode int           `json:"StatusCode"`
 	Latency    time.Duration `json:"Latency"`
-	Request    Request       `json:"Request"`
+	Request    *Request      `json:"Request"`
 	Response   *Response     `json:"Response"`
 	ErrorMsg   string        `json:"Error"`
 }
@@ -64,7 +64,7 @@ func measureResult(opts *Options, req *Request, resp *fasthttp.Response, latency
 	results <- &Result{
 		StatusCode: statusCode,
 		Latency:    latency,
-		Request:    *req,
+		Request:    req,
 		Response: &Response{
 			StatusCode: statusCode,
 			Headers:    respHeaders,

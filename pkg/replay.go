@@ -77,6 +77,9 @@ func Replay(opts *Options) int {
 	pacer.start()
 
 	for scanner.Scan() {
+		if pacer.done {
+			break
+		}
 		waitGroupResults.Add(1)
 
 		b := scanner.Bytes()
@@ -86,7 +89,7 @@ func Replay(opts *Options) int {
 			res := &Result{
 				StatusCode: -2,
 				Latency:    0,
-				Request:    *req,
+				Request:    req,
 				ErrorMsg:   fmt.Sprintf("%v", err),
 			}
 
@@ -96,10 +99,6 @@ func Replay(opts *Options) int {
 
 			results <- res
 			continue
-		}
-
-		if pacer.done {
-			break
 		}
 
 		duration := pacer.waitDuration(req.Timestamp)
