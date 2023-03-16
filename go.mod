@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/VictoriaMetrics/metrics v1.23.1
 	github.com/montanaflynn/stats v0.7.0
-	github.com/valyala/fasthttp v1.44.0
+	github.com/valyala/fasthttp v1.45.0
 	github.com/valyala/fastjson v1.6.4
 )
 
