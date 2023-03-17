@@ -126,20 +126,19 @@ func doHttpRequest(opts *Options, requests <-chan *Request, results chan<- *Resu
 	for req := range requests {
 		latencyStart := time.Now()
 		if opts.DryRun {
-			measureResult(opts, req, &fasthttp.Response{}, latencyStart, nil, results)
+			sendToResult(opts, req, &fasthttp.Response{}, latencyStart, nil, results)
 		} else {
 			httpReq := req.fasthttpRequest()
 			httpResp := fasthttp.AcquireResponse()
-			httpResp.SkipBody = true
 
 			client, err := getOrCreateHttpClient(opts, req)
 			if err != nil {
-				measureResult(opts, req, httpResp, latencyStart, err, results)
+				sendToResult(opts, req, httpResp, latencyStart, err, results)
 				return
 			}
 
 			err = client.DoTimeout(httpReq, httpResp, time.Duration(opts.Timeout)*time.Second)
-			measureResult(opts, req, httpResp, latencyStart, err, results)
+			sendToResult(opts, req, httpResp, latencyStart, err, results)
 
 			fasthttp.ReleaseRequest(httpReq)
 			fasthttp.ReleaseResponse(httpResp)

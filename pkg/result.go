@@ -34,7 +34,7 @@ func (r *Result) toJson() string {
 	return b2s(j)
 }
 
-func measureResult(opts *Options, req *Request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
+func sendToResult(opts *Options, req *Request, resp *fasthttp.Response, latencyStart time.Time, err error, results chan<- *Result) {
 	latency := time.Since(latencyStart)
 
 	var errorMsg string
