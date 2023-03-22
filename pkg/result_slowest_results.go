@@ -23,7 +23,7 @@ func (h *SlowestResults) storeResult(result *Result) {
 
 func NewSlowestResults(opts *Options) *SlowestResults {
 	return &SlowestResults{
-		nSlowestResults: opts.NlongestResults,
-		results:         make([]*Result, 0, opts.NlongestResults),
+		nSlowestResults: opts.PrintNSlowest,
+		results:         make([]*Result, 0, opts.PrintNSlowest),
 	}
 }

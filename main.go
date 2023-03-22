@@ -49,8 +49,7 @@ func main() {
 	flag.BoolVar(&opts.MetricsServerEnable, "metricsServerEnable", false, "Enable metrics server. Server prometheus statistics on /metrics endpoint")
 	flag.StringVar(&opts.MetricsServerAddr, "metricsServerAddr", "0.0.0.0:8081", "Metrics server listen address")
 
-	flag.BoolVar(&opts.NlongestPrint, "nLongestPrint", false, "Print the N results with the longest latency")
-	flag.IntVar(&opts.NlongestResults, "nLongestResults", 10, "Store the N results with the longest latency")
+	flag.IntVar(&opts.PrintNSlowest, "printNSlowest", 0, "Print N slowest Requests")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s -target string\n", os.Args[0])

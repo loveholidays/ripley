@@ -10,15 +10,11 @@ import (
 	"github.com/VictoriaMetrics/metrics"
 )
 
-var metricsRequestReceived = make(chan bool)
+const metricsDefaultSummaryWindow = 5 * time.Minute
 
-const defaultSummaryWindow = 5 * time.Minute
+var metricsDefaultSummaryQuantiles = []float64{0.5, 0.9, 0.95, 0.99, 1}
 
-var defaultSummaryQuantiles = []float64{0.5, 0.9, 0.95, 0.99, 1}
-
-func metricsServer(opts *Options) {
-	defer close(metricsRequestReceived)
-
+func metricsServer(opts *Options, metricsRequestReceived chan<- bool) {
 	if !opts.MetricsServerEnable {
 		return
 	}
@@ -50,7 +46,7 @@ func getOrCreateChannelCapacityCounter(name string) *metrics.Counter {
 }
 
 func getOrCreateRequestDurationSummary(addr string) *metrics.Summary {
-	return metrics.GetOrCreateSummaryExt(fmt.Sprintf(`requests_duration_seconds{addr="%s"}`, addr), defaultSummaryWindow, defaultSummaryQuantiles)
+	return metrics.GetOrCreateSummaryExt(fmt.Sprintf(`requests_duration_seconds{addr="%s"}`, addr), metricsDefaultSummaryWindow, metricsDefaultSummaryQuantiles)
 }
 
 func getOrCreateResponseCodeCounter(code int, addr string) *metrics.Counter {
@@ -83,4 +79,22 @@ func metricHandleResult(result *Result) {
 
 	response_code := getOrCreateResponseCodeCounter(result.StatusCode, result.Request.Address)
 	response_code.Inc()
+}
+
+func metricMeasureChannelCapacityAndLengh(requests chan *Request, results chan *Result) {
+	ticker := time.Tick(time.Second)
+
+	requests_channel_length := getOrCreateChannelLengthCounter("requests")
+	requests_channel_capacity := getOrCreateChannelCapacityCounter("requests")
+
+	results_channel_length := getOrCreateChannelLengthCounter("results")
+	results_channel_capacity := getOrCreateChannelCapacityCounter("results")
+
+	for range ticker {
+		requests_channel_length.Set(uint64(len(requests)))
+		requests_channel_capacity.Set(uint64(cap(requests)))
+
+		results_channel_length.Set(uint64(len(results)))
+		results_channel_capacity.Set(uint64(cap(results)))
+	}
 }

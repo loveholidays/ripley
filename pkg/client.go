@@ -31,26 +31,10 @@ type HttpClientsPool struct {
 
 var httpClientsPool HttpClientsPool
 
-func startClientWorkers(opts *Options, requests <-chan *Request, results chan *Result, slowestResults *SlowestResults) {
-	ticker := time.Tick(time.Second)
-	go func() {
-		requests_channel_length := getOrCreateChannelLengthCounter("requests")
-		requests_channel_capacity := getOrCreateChannelCapacityCounter("requests")
-
-		results_channel_length := getOrCreateChannelLengthCounter("results")
-		results_channel_capacity := getOrCreateChannelCapacityCounter("results")
-
-		for range ticker {
-			requests_channel_length.Set(uint64(len(requests)))
-			requests_channel_capacity.Set(uint64(cap(requests)))
-
-			results_channel_length.Set(uint64(len(results)))
-			results_channel_capacity.Set(uint64(cap(results)))
-		}
-	}()
-
+func startClientWorkers(opts *Options, requests chan *Request, results chan *Result, slowestResults *SlowestResults, metricsRequestReceived chan<- bool) {
+	go metricMeasureChannelCapacityAndLengh(requests, results)
 	go handleResult(opts, results, slowestResults)
-	go metricsServer(opts)
+	go metricsServer(opts, metricsRequestReceived)
 
 	for i := 0; i < opts.NumWorkers; i++ {
 		go doHttpRequest(opts, requests, results)

@@ -42,8 +42,7 @@ type Options struct {
 	PrintStat           bool
 	MetricsServerEnable bool
 	MetricsServerAddr   string
-	NlongestPrint       bool
-	NlongestResults     int
+	PrintNSlowest       int
 }
 
 // Ensures we have handled all HTTP request results before exiting
@@ -53,13 +52,14 @@ func Replay(opts *Options) int {
 	// Default exit code
 	var exitCode int = 0
 	var slowestResults = NewSlowestResults(opts)
+	var metricsRequestReceived = make(chan bool)
 
 	// Send requests for the HTTP client workers to pick up on this channel
-	requests := make(chan *Request, opts.NumWorkers)
+	var requests = make(chan *Request, opts.NumWorkers)
 	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
-	results := make(chan *Result, opts.NumWorkers)
+	var results = make(chan *Result, opts.NumWorkers)
 	defer close(results)
 
 	// The pacer controls the rate of replay
@@ -73,7 +73,7 @@ func Replay(opts *Options) int {
 	scanner := bufio.NewScanner(reader)
 
 	// Start HTTP client goroutine pool
-	startClientWorkers(opts, requests, results, slowestResults)
+	startClientWorkers(opts, requests, results, slowestResults, metricsRequestReceived)
 	pacer.start()
 
 	for scanner.Scan() {
