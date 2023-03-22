@@ -69,6 +69,11 @@ func (p *pacer) onPhaseElapsed() {
 }
 
 func (p *pacer) waitDuration(t time.Time) time.Duration {
+	// Need to check as time.AfterFunc updates phases lengh
+	if len(p.phases) == 0 {
+		return 0
+	}
+
 	// If there are no more phases left, continue with the last phase's rate
 	if p.lastRequestTime.IsZero() {
 		p.lastRequestTime = t
