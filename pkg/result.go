@@ -76,10 +76,10 @@ func sendToResult(opts *Options, req *Request, resp *fasthttp.Response, latencyS
 }
 
 // TODO: Consider rewriting the code to use a Result Broker with multi-channel and broadcast functionality in order to improve its scalability.
-func handleResult(opts *Options, results <-chan *Result) {
+func handleResult(opts *Options, results <-chan *Result, slowestResults *SlowestResults) {
 	for result := range results {
 		metricHandleResult(result)
-		storeLongestResults(result, opts)
+		slowestResults.storeResult(result)
 
 		if !opts.Silent {
 			fmt.Println(result.toJson())

@@ -20,7 +20,6 @@ package ripley
 
 import (
 	"bufio"
-	"container/heap"
 	"fmt"
 	"os"
 	"sync"
@@ -53,6 +52,7 @@ var waitGroupResults sync.WaitGroup
 func Replay(opts *Options) int {
 	// Default exit code
 	var exitCode int = 0
+	var slowestResults = NewSlowestResults(opts)
 
 	// Send requests for the HTTP client workers to pick up on this channel
 	requests := make(chan *Request, opts.NumWorkers)
@@ -73,7 +73,7 @@ func Replay(opts *Options) int {
 	scanner := bufio.NewScanner(reader)
 
 	// Start HTTP client goroutine pool
-	startClientWorkers(opts, requests, results)
+	startClientWorkers(opts, requests, results, slowestResults)
 	pacer.start()
 
 	for scanner.Scan() {
@@ -123,9 +123,8 @@ func Replay(opts *Options) int {
 	}
 
 	if opts.NlongestPrint {
-		for longestResultsHeap.Len() > 0 {
-			r := heap.Pop(longestResultsHeap)
-			fmt.Println(r.(*Result).toJson())
+		for _, slowestResult := range slowestResults.results {
+			fmt.Println(slowestResult.toJson())
 		}
 	}
 

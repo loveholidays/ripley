@@ -31,7 +31,7 @@ type HttpClientsPool struct {
 
 var httpClientsPool HttpClientsPool
 
-func startClientWorkers(opts *Options, requests <-chan *Request, results chan *Result) {
+func startClientWorkers(opts *Options, requests <-chan *Request, results chan *Result, slowestResults *SlowestResults) {
 	ticker := time.Tick(time.Second)
 	go func() {
 		requests_channel_length := getOrCreateChannelLengthCounter("requests")
@@ -49,7 +49,7 @@ func startClientWorkers(opts *Options, requests <-chan *Request, results chan *R
 		}
 	}()
 
-	go handleResult(opts, results)
+	go handleResult(opts, results, slowestResults)
 	go metricsServer(opts)
 
 	for i := 0; i < opts.NumWorkers; i++ {
