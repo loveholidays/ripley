@@ -122,10 +122,8 @@ func Replay(opts *Options) int {
 		metrics.WritePrometheus(os.Stdout, false)
 	}
 
-	if opts.NlongestPrint {
-		for _, slowestResult := range slowestResults.results {
-			fmt.Println(slowestResult.toJson())
-		}
+	for _, slowestResult := range slowestResults.results {
+		fmt.Println(slowestResult.toJson())
 	}
 
 	return exitCode
