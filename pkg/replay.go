@@ -63,7 +63,7 @@ func Replay(opts *Options) int {
 	defer close(results)
 
 	// The pacer controls the rate of replay
-	pacer, err := newPacer(opts.Pace)
+	pacer, err := NewPacer(opts.Pace)
 	if err != nil {
 		panic(err)
 	}
@@ -119,7 +119,7 @@ func Replay(opts *Options) int {
 	}
 
 	if opts.PrintStat {
-		metrics.WritePrometheus(os.Stdout, false)
+		metrics.WritePrometheus(os.Stdout, true)
 	}
 
 	for _, slowestResult := range slowestResults.results {

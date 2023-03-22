@@ -73,6 +73,11 @@ func getOrCreateReadBytesCounter(addr string) *metrics.Counter {
 	return metrics.GetOrCreateCounter(fmt.Sprintf(`connections_read_bytes{addr="%s"}`, addr))
 }
 
+func updatePacerMetrics(p *phase) {
+	metrics_pacer_phases := getOrCreatePacerPhaseTimeCounter(fmt.Sprintf("%s@%.3f", p.duration, p.rate))
+	metrics_pacer_phases.Set(uint64(time.Now().Unix()))
+}
+
 func metricHandleResult(result *Result) {
 	requests_duration_seconds := getOrCreateRequestDurationSummary(result.Request.Address)
 	requests_duration_seconds.Update(result.Latency.Seconds())

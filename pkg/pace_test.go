@@ -74,7 +74,7 @@ func TestParseManyPhases(t *testing.T) {
 }
 
 func TestWaitDuration(t *testing.T) {
-	pacer, err := newPacer("30s@1")
+	pacer, err := NewPacer("30s@1")
 
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -97,7 +97,7 @@ func TestWaitDuration(t *testing.T) {
 }
 
 func TestWaitDuration5X(t *testing.T) {
-	pacer, err := newPacer("30s@10")
+	pacer, err := NewPacer("30s@10")
 
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -120,7 +120,7 @@ func TestWaitDuration5X(t *testing.T) {
 }
 
 func TestPacerDoneOnLastPhaseElapsed(t *testing.T) {
-	pacer, err := newPacer("30s@10")
+	pacer, err := NewPacer("30s@10")
 
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)

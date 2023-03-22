@@ -19,7 +19,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +35,7 @@ type phase struct {
 	rate     float64
 }
 
-func newPacer(phasesStr string) (*pacer, error) {
+func NewPacer(phasesStr string) (*pacer, error) {
 	phases, err := parsePhases(phasesStr)
 
 	if err != nil {
@@ -108,9 +107,4 @@ func parsePhases(phasesStr string) ([]*phase, error) {
 	}
 
 	return phases, nil
-}
-
-func updatePacerMetrics(p *phase) {
-	metrics_pacer_phases := getOrCreatePacerPhaseTimeCounter(fmt.Sprintf("%s@%.3f", p.duration, p.rate))
-	metrics_pacer_phases.Set(uint64(time.Now().Unix()))
 }
