@@ -7,7 +7,7 @@ type SlowestResults struct {
 	nSlowestResults int
 }
 
-func (h *SlowestResults) storeResult(result *Result) {
+func (h *SlowestResults) store(result *Result) {
 	if h.nSlowestResults == 0 {
 		return
 	}

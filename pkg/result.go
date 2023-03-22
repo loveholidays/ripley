@@ -79,7 +79,7 @@ func sendToResult(opts *Options, req *Request, resp *fasthttp.Response, latencyS
 func handleResult(opts *Options, results <-chan *Result, slowestResults *SlowestResults) {
 	for result := range results {
 		metricHandleResult(result)
-		slowestResults.storeResult(result)
+		slowestResults.store(result)
 
 		if !opts.Silent {
 			fmt.Println(result.toJson())
