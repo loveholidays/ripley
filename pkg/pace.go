@@ -21,6 +21,7 @@ package ripley
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,7 @@ type pacer struct {
 	phases          []*phase
 	lastRequestTime time.Time
 	done            bool
+	mutex           sync.RWMutex
 }
 
 type phase struct {
@@ -54,6 +56,9 @@ func (p *pacer) start() {
 
 func (p *pacer) onPhaseElapsed() {
 	// Pop phase
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
 	p.phases = p.phases[1:]
 
 	if len(p.phases) == 0 {
@@ -68,6 +73,8 @@ func (p *pacer) onPhaseElapsed() {
 }
 
 func (p *pacer) waitDuration(t time.Time) time.Duration {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
 	// Need to check as time.AfterFunc updates phases lengh
 	if len(p.phases) == 0 {
 		return 0
