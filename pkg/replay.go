@@ -22,7 +22,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -54,6 +56,9 @@ func Replay(opts *Options) int {
 	var slowestResults = NewSlowestResults(opts)
 	var metricsRequestReceived = make(chan bool)
 
+	// Print metrics and slowest results at the end
+	defer printStats(slowestResults, opts)
+
 	// Send requests for the HTTP client workers to pick up on this channel
 	var requests = make(chan *Request, opts.NumWorkers)
 	defer close(requests)
@@ -75,6 +80,17 @@ func Replay(opts *Options) int {
 	// Start HTTP client goroutine pool
 	startClientWorkers(opts, requests, results, slowestResults, metricsRequestReceived)
 	pacer.start()
+
+	// Channel to handle interrupt signal
+	interruptChan := make(chan os.Signal, 1)
+	signal.Notify(interruptChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Print metrics and slowest results by signal
+	go func() {
+		<-interruptChan
+		printStats(slowestResults, opts)
+		os.Exit(exitCode)
+	}()
 
 	for scanner.Scan() {
 		if pacer.done {
@@ -113,20 +129,22 @@ func Replay(opts *Options) int {
 
 	waitGroupResults.Wait()
 
+	// Wait until the latest Prometheus metrics are received by exporter
 	select {
 	case <-metricsRequestReceived:
 	case <-time.After(time.Duration(2) * time.Second):
 	}
 
+	return exitCode
+}
+
+func printStats(slowestResults *SlowestResults, opts *Options) {
 	if opts.PrintStat {
 		metrics.WritePrometheus(os.Stdout, true)
 	}
-
 	for _, slowestResult := range slowestResults.results {
 		fmt.Println(slowestResult.toJson())
 	}
-
-	return exitCode
 }
 
 func b2s(b []byte) string {
