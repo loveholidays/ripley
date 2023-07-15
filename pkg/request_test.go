@@ -31,8 +31,8 @@ func TestUnrmarshalInvalidMethod(t *testing.T) {
 		t.Errorf("req = %v; want nil", req)
 	}
 
-	if err.Error() != "Invalid method: WHAT" {
-		t.Errorf(`err.Error() = %v; want "Invalid method: WHAT"`, err.Error())
+	if err.Error() != "invalid method: WHAT" {
+		t.Errorf(`err.Error() = %v; want "invalid method: WHAT"`, err.Error())
 	}
 }
 
