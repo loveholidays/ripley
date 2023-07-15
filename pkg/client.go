@@ -51,7 +51,7 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 		if dryRun {
 			sendResult(req, &http.Response{}, latencyStart, "", results)
 		} else {
-			go func() {
+			go func(req *request) {
 				httpReq, err := req.httpRequest()
 
 				if err != nil {
@@ -75,12 +75,12 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 				}
 
 				sendResult(req, resp, latencyStart, "", results)
-			}()
+			}(req)
 		}
 	}
 }
 
 func sendResult(req *request, resp *http.Response, latencyStart time.Time, err string, results chan<- *Result) {
-	latency := time.Now().Sub(latencyStart)
+	latency := time.Since(latencyStart)
 	results <- &Result{StatusCode: resp.StatusCode, Latency: latency, Request: req, ErrorMsg: err}
 }
