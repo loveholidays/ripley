@@ -32,14 +32,16 @@ Grab the latest OS/Arch compatible binary from our [Releases](https://github.com
 ```bash
 git clone git@github.com:loveholidays/ripley.git
 cd ripley
-go build -o ripley main.go
+make build
 ```
+
+This will create the binary `ripley` in your /bin folder. 
 
 #### Quickstart from source
 Run a web server to replay traffic against
 
 ```bash
-go run etc/dummyweb.go
+go run etc/web/dummy.go
 ```
 
 Loop 10 times over a set of HTTP requests at 1x rate for 10 seconds, then at 5x for 10 seconds, then at 10x for the remaining requests

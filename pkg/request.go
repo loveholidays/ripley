@@ -66,7 +66,7 @@ func unmarshalRequest(jsonRequest []byte) (*request, error) {
 
 	// Validate
 	if !validMethod(req.Method) {
-		return req, fmt.Errorf("invalid method: %s", req.Method)
+		return nil, fmt.Errorf("invalid method: %s", req.Method)
 	}
 
 	if req.Url == "" {
