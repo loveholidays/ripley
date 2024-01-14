@@ -2,8 +2,8 @@ name: goreleaser
 
 on:
   push:
-    tags:
-      - '*'
+    branches:
+      - feature/fixing-goreleaser
 
 jobs:
   goreleaser:
