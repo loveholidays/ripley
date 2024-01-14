@@ -11,7 +11,7 @@ builds:
       - linux
       - darwin
 archives:
-  - file_name_template: >-
+  - name_template: >-
       {{- .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
