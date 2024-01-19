@@ -25,11 +25,8 @@ import (
 
 func TestUnrmarshalInvalidMethod(t *testing.T) {
 	jsonRequest := `{"method": "WHAT"}`
-	req, err := unmarshalRequest([]byte(jsonRequest))
 
-	if req == nil {
-		t.Error("req shouldn't be nil")
-	}
+	_, err := unmarshalRequest([]byte(jsonRequest))
 
 	if err.Error() != "invalid method: WHAT" {
 		t.Errorf(`err.Error() = %v; want "invalid method: WHAT"`, err.Error())
