@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-func TestUnrmarshalInvalidMethod(t *testing.T) {
+func TestUnmarshalInvalidMethod(t *testing.T) {
 	jsonRequest := `{"method": "WHAT"}`
 	req, err := unmarshalRequest([]byte(jsonRequest))
 
@@ -31,12 +31,12 @@ func TestUnrmarshalInvalidMethod(t *testing.T) {
 		t.Errorf("req = %v; want nil", req)
 	}
 
-	if err.Error() != "Invalid method: WHAT" {
+	if err.Error() != "invalid method: WHAT" {
 		t.Errorf(`err.Error() = %v; want "Invalid method: WHAT"`, err.Error())
 	}
 }
 
-func TestUnrmarshalValid(t *testing.T) {
+func TestUnmarshalValid(t *testing.T) {
 	jsonRequest := `{"method": "GET", "url": "http://example.com", "timestamp": "2021-11-08T18:59:59.9Z"}`
 	req, err := unmarshalRequest([]byte(jsonRequest))
 
