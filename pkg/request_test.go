@@ -23,18 +23,27 @@ import (
 	"time"
 )
 
-func TestUnrmarshalInvalidMethod(t *testing.T) {
-	jsonRequest := `{"method": "WHAT"}`
-	_, err := unmarshalRequest([]byte(jsonRequest))
+func TestParseInvalidJson(t *testing.T) {
+	jsonRequest := []byte(`{}}`)
+	_, err := unmarshalRequest(&jsonRequest)
 
-	if err.Error() != "Invalid method: WHAT" {
-		t.Errorf(`err.Error() = %v; want "Invalid method: WHAT"`, err.Error())
+	if err.Error() != `unexpected tail: "}"` {
+		t.Errorf(`err.Error() = %v; want "unexpected tail: "}""`, err.Error())
+	}
+}
+
+func TestUnrmarshalInvalidMethod(t *testing.T) {
+	jsonRequest := []byte(`{"method": "WHAT",  "url": "http://example.com"}`)
+	_, err := unmarshalRequest(&jsonRequest)
+
+	if err.Error() != "invalid method: WHAT" {
+		t.Errorf(`err.Error() = %v; want "invalid method: WHAT"`, err.Error())
 	}
 }
 
 func TestUnrmarshalValid(t *testing.T) {
-	jsonRequest := `{"method": "GET", "url": "http://example.com", "timestamp": "2021-11-08T18:59:59.9Z"}`
-	req, err := unmarshalRequest([]byte(jsonRequest))
+	jsonRequest := []byte(`{"method": "GET", "url": "http://example.com", "timestamp": "2021-11-08T18:59:59.9Z"}`)
+	req, err := unmarshalRequest(&jsonRequest)
 
 	if err != nil {
 		t.Errorf("err = %v; want nil", err)
@@ -56,5 +65,56 @@ func TestUnrmarshalValid(t *testing.T) {
 
 	if req.Timestamp != expectedTime {
 		t.Errorf("req.Timestamp = %v; want %v", req.Timestamp, expectedTime)
+	}
+}
+
+func TestFasthttpRequest(t *testing.T) {
+	jsonRequest := []byte(`
+	{
+		"method": "GET", "url": "http://example.com", "body":"body", "timestamp": "2021-11-08T18:59:59.9Z",
+		"headers": {"Content-Type": "application/json", "Host": "example.net", "Cookies":"cookie=1234567890", "User-Agent":"Mozilla/5.0", "x-custom-header":"x-custom-header-value"}
+	}
+	`)
+	req, err := unmarshalRequest(&jsonRequest)
+	if err != nil {
+		t.Errorf("err = %v; want nil", err)
+	}
+
+	fr := req.fasthttpRequest()
+
+	if string(fr.Header.Method()) != "GET" {
+		t.Errorf("Method = %v; want GET", req.Method)
+	}
+
+	if string(fr.Body()) != "body" {
+		t.Errorf("Body = %v; want body", req.Method)
+	}
+
+	if string(fr.Header.ContentType()) != "application/json" {
+		t.Errorf("ContentType = %s; want application/json", fr.Header.ContentType())
+	}
+
+	if string(fr.Header.UserAgent()) != "Mozilla/5.0" {
+		t.Errorf("UserAgent = %s; want Mozilla/5.0", fr.Header.UserAgent())
+	}
+
+	if string(fr.Header.Peek("x-custom-header")) != "x-custom-header-value" {
+		t.Errorf("UserAgent = %s; want Mozilla/5.0", fr.Header.UserAgent())
+	}
+
+	if string(fr.Header.Peek("Host")) != "example.net" {
+		t.Errorf("Host = %s; want example.net", fr.Header.Peek("Host"))
+	}
+
+	if string(fr.Host()) != "example.net" {
+		t.Errorf("Host = %s; want example.net", fr.Host())
+	}
+
+	if string(fr.Header.RequestURI()) != "http://example.com" {
+		t.Errorf("RequestURI = %s; want http://example.com", fr.Header.RequestURI())
+	}
+
+	if string(fr.RequestURI()) != "/" {
+		t.Errorf("RequestURI = %s; want /", fr.RequestURI())
 	}
 }

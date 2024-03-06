@@ -19,68 +19,55 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"io"
-	"net/http"
+	"sync"
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
 
-type Result struct {
-	StatusCode int           `json:"statusCode"`
-	Latency    time.Duration `json:"latency"`
-	Request    *request      `json:"request"`
-	ErrorMsg   string        `json:"error"`
+type HttpClientsPool struct {
+	pool sync.Map
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout int) {
-	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+var httpClientsPool HttpClientsPool
 
-	for i := 0; i <= numWorkers; i++ {
-		go doHttpRequest(client, requests, results, dryRun)
+func startClientWorkers(opts *Options, requests chan *Request, results chan *Result, slowestResults *SlowestResults, metricsRequestReceived chan<- bool) {
+	go metricMeasureChannelCapacityAndLengh(requests, results)
+	go handleResult(opts, results, slowestResults)
+	go metricsServer(opts, metricsRequestReceived)
+
+	for i := 0; i < opts.NumWorkers; i++ {
+		go doHttpRequest(opts, requests, results)
 	}
 }
 
-func doHttpRequest(client *http.Client, requests <-chan *request, results chan<- *Result, dryRun bool) {
-	for req := range requests {
-		latencyStart := time.Now()
-
-		if dryRun {
-			sendResult(req, &http.Response{}, latencyStart, "", results)
-		} else {
-			go func() {
-				httpReq, err := req.httpRequest()
-
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
-				}
-
-				resp, err := client.Do(httpReq)
-
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
-				}
-
-				_, err = io.ReadAll(resp.Body)
-				defer resp.Body.Close()
-
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
-				}
-
-				sendResult(req, resp, latencyStart, "", results)
-			}()
-		}
+func getOrCreateHttpClient(opts *Options, req *Request) (*fasthttp.HostClient, error) {
+	if val, ok := httpClientsPool.pool.Load(req.Address); ok {
+		return val.(*fasthttp.HostClient), nil
 	}
+
+	// If another goroutine has stored a value before us,
+	// use the stored value instead of the one we just created
+	val, _ := httpClientsPool.pool.LoadOrStore(req.Address, httpClientsPool.createHttpClient(opts, req))
+	return val.(*fasthttp.HostClient), nil
 }
 
-func sendResult(req *request, resp *http.Response, latencyStart time.Time, err string, results chan<- *Result) {
-	latency := time.Now().Sub(latencyStart)
-	results <- &Result{StatusCode: resp.StatusCode, Latency: latency, Request: req, ErrorMsg: err}
+func (h *HttpClientsPool) createHttpClient(opts *Options, req *Request) interface{} {
+	return &fasthttp.HostClient{
+		Addr:                          req.Address,
+		Name:                          "ripley",
+		MaxConns:                      opts.NumWorkers,
+		ReadBufferSize:                512 * 1024,
+		WriteBufferSize:               128 * 1024,
+		ConnPoolStrategy:              fasthttp.LIFO,
+		IsTLS:                         req.IsTLS,
+		MaxConnWaitTimeout:            time.Duration(opts.Timeout) * time.Second,
+		MaxConnDuration:               time.Duration(opts.Timeout) * time.Second,
+		MaxIdleConnDuration:           time.Duration(opts.Timeout) * time.Second,
+		ReadTimeout:                   time.Duration(opts.Timeout) * time.Second,
+		WriteTimeout:                  time.Duration(opts.Timeout) * time.Second,
+		Dial:                          CountingDialer(opts),
+		DisablePathNormalizing:        true,
+		DisableHeaderNamesNormalizing: true,
+	}
 }

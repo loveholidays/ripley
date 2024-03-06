@@ -21,6 +21,7 @@ package ripley
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,7 @@ type pacer struct {
 	phases          []*phase
 	lastRequestTime time.Time
 	done            bool
+	mutex           sync.RWMutex
 }
 
 type phase struct {
@@ -35,7 +37,7 @@ type phase struct {
 	rate     float64
 }
 
-func newPacer(phasesStr string) (*pacer, error) {
+func NewPacer(phasesStr string) (*pacer, error) {
 	phases, err := parsePhases(phasesStr)
 
 	if err != nil {
@@ -47,22 +49,37 @@ func newPacer(phasesStr string) (*pacer, error) {
 
 func (p *pacer) start() {
 	// Run a timer for the first phase's duration
+	updatePacerMetrics(p.phases[0])
+
 	time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
 }
 
 func (p *pacer) onPhaseElapsed() {
 	// Pop phase
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
 	p.phases = p.phases[1:]
 
 	if len(p.phases) == 0 {
 		p.done = true
+		updatePacerMetrics(&phase{duration: 0, rate: 0})
 	} else {
+		updatePacerMetrics(p.phases[0])
+
 		// Create a timer with next phase
 		time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
 	}
 }
 
 func (p *pacer) waitDuration(t time.Time) time.Duration {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	// Need to check as time.AfterFunc updates phases lengh
+	if len(p.phases) == 0 {
+		return 0
+	}
+
 	// If there are no more phases left, continue with the last phase's rate
 	if p.lastRequestTime.IsZero() {
 		p.lastRequestTime = t

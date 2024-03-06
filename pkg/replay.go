@@ -20,97 +20,133 @@ package ripley
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
+	"unsafe"
+
+	"github.com/VictoriaMetrics/metrics"
 )
 
-func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers int) int {
+type Options struct {
+	Pace                string
+	Silent              bool
+	SilentHttpError     bool
+	DryRun              bool
+	Timeout             int
+	TimeoutConnection   int
+	Strict              bool
+	Memprofile          string
+	NumWorkers          int
+	PrintStat           bool
+	MetricsServerEnable bool
+	MetricsServerAddr   string
+	PrintNSlowest       int
+}
+
+// Ensures we have handled all HTTP request results before exiting
+var waitGroupResults sync.WaitGroup
+
+func Replay(opts *Options) int {
 	// Default exit code
 	var exitCode int = 0
-	// Ensures we have handled all HTTP request results before exiting
-	var waitGroup sync.WaitGroup
+	var slowestResults = NewSlowestResults(opts)
+	var metricsRequestReceived = make(chan bool)
+
+	// Print metrics and slowest results at the end
+	defer printStats(slowestResults, opts)
 
 	// Send requests for the HTTP client workers to pick up on this channel
-	requests := make(chan *request)
+	var requests = make(chan *Request, opts.NumWorkers)
 	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
-	results := make(chan *Result)
+	var results = make(chan *Result, opts.NumWorkers)
 	defer close(results)
 
 	// The pacer controls the rate of replay
-	pacer, err := newPacer(phasesStr)
-
+	pacer, err := NewPacer(opts.Pace)
 	if err != nil {
 		panic(err)
 	}
 
 	// Read request JSONL input from STDIN
-	scanner := bufio.NewScanner(os.Stdin)
+	reader := bufio.NewReaderSize(os.Stdin, 1024*1024)
+	scanner := bufio.NewScanner(reader)
 
 	// Start HTTP client goroutine pool
-	startClientWorkers(numWorkers, requests, results, dryRun, timeout)
+	startClientWorkers(opts, requests, results, slowestResults, metricsRequestReceived)
 	pacer.start()
 
+	// Channel to handle interrupt signal
+	interruptChan := make(chan os.Signal, 1)
+	signal.Notify(interruptChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Print metrics and slowest results by signal
+	go func() {
+		<-interruptChan
+		printStats(slowestResults, opts)
+		os.Exit(exitCode)
+	}()
+
 	for scanner.Scan() {
-		req, err := unmarshalRequest(scanner.Bytes())
-		if err != nil {
-			exitCode = 126
-			result, _ := json.Marshal(Result{
-				StatusCode: 0,
-				Latency:    0,
-				Request:    req,
-				ErrorMsg:   fmt.Sprintf("%v", err),
-			})
-			fmt.Println(string(result))
-
-			if strict {
-				panic(err)
-			}
-			continue
-		}
-
 		if pacer.done {
 			break
 		}
+		waitGroupResults.Add(1)
 
-		// The pacer decides how long to wait between requests
-		waitDuration := pacer.waitDuration(req.Timestamp)
-		time.Sleep(waitDuration)
-		requests <- req
-		waitGroup.Add(1)
-
-		// Goroutine to handle the  HTTP client result
-		go func() {
-			defer waitGroup.Done()
-
-			result := <-results
-
-			// If there's a panic elsewhere, this channel can return nil
-			if result == nil {
-				return
+		b := scanner.Bytes()
+		req, err := unmarshalRequest(&b)
+		if err != nil {
+			exitCode = 126
+			res := &Result{
+				StatusCode: -2,
+				Latency:    0,
+				Request:    req,
+				ErrorMsg:   fmt.Sprintf("%v", err),
 			}
 
-			jsonResult, err := json.Marshal(result)
-
-			if err != nil {
+			if opts.Strict {
 				panic(err)
 			}
 
-			if !silent {
-				fmt.Println(string(jsonResult))
-			}
-		}()
+			results <- res
+			continue
+		}
+
+		duration := pacer.waitDuration(req.Timestamp)
+		time.Sleep(duration)
+
+		requests <- req
 	}
 
-	if scanner.Err() != nil {
-		panic(scanner.Err())
+	if err := scanner.Err(); err != nil {
+		panic(err)
 	}
 
-	waitGroup.Wait()
+	waitGroupResults.Wait()
+
+	// Wait until the latest Prometheus metrics are received by exporter
+	select {
+	case <-metricsRequestReceived:
+	case <-time.After(time.Duration(2) * time.Second):
+	}
 
 	return exitCode
+}
+
+func printStats(slowestResults *SlowestResults, opts *Options) {
+	if opts.PrintStat {
+		metrics.WritePrometheus(os.Stdout, true)
+	}
+	for _, slowestResult := range slowestResults.results {
+		fmt.Println(slowestResult.toJson())
+	}
+}
+
+func b2s(b []byte) string {
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }

@@ -19,63 +19,97 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
+	"net/url"
 	"time"
+
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fastjson"
 )
 
 var (
 	validMethods = [9]string{"GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"}
 )
 
-type request struct {
-	Method    string            `json:"method"`
-	Url       string            `json:"url"`
-	Body      string            `json:"body"`
-	Timestamp time.Time         `json:"timestamp"`
-	Headers   map[string]string `json:"headers"`
+type Request struct {
+	Address   string            `json:"Address"`
+	IsTLS     bool              `json:"IsTLS"`
+	Method    string            `json:"Method"`
+	Url       string            `json:"Url"`
+	Body      string            `json:"Body"`
+	Timestamp time.Time         `json:"Timestamp"`
+	Headers   map[string]string `json:"Headers"`
 }
 
-func (r *request) httpRequest() (*http.Request, error) {
-	req, err := http.NewRequest(r.Method, r.Url, bytes.NewReader([]byte(r.Body)))
+func (r *Request) fasthttpRequest() *fasthttp.Request {
+	req := fasthttp.AcquireRequest()
 
-	if err != nil {
-		return nil, err
-	}
+	req.Header.SetMethod(r.Method)
+	req.SetRequestURI(r.Url)
+	req.SetBody([]byte(r.Body))
 
 	for k, v := range r.Headers {
-		req.Header.Add(k, v)
+		req.Header.Set(k, v)
 	}
 
-	if host := req.Header.Get("Host"); host != "" {
-		req.Host = host
+	if host := req.Header.Peek("Host"); len(host) > 0 {
+		req.SetHost(b2s(host))
 	}
 
-	return req, nil
+	return req
 }
 
-func unmarshalRequest(jsonRequest []byte) (*request, error) {
-	req := &request{}
-	err := json.Unmarshal(jsonRequest, &req)
+func unmarshalRequest(jsonRequest *[]byte) (*Request, error) {
+	var p fastjson.Parser
+	v, err := p.ParseBytes(*jsonRequest)
+	if err != nil {
+		return &Request{}, err
+	}
 
+	req := &Request{
+		Method:  b2s(v.GetStringBytes("method")),
+		Url:     b2s(v.GetStringBytes("url")),
+		Body:    b2s(v.GetStringBytes("body")),
+		Headers: make(map[string]string),
+	}
+
+	if req.Url == "" {
+		return req, fmt.Errorf("missing required key: url")
+	}
+
+	// Parse URL
+	up, err := url.Parse(req.Url)
 	if err != nil {
 		return req, err
 	}
+	req.Address = up.Host
+	if up.Port() == "" {
+		req.Address += ":80"
+	}
+	req.IsTLS = up.Scheme == "https"
 
 	// Validate
 	if !validMethod(req.Method) {
 		return req, fmt.Errorf("Invalid method: %s", req.Method)
 	}
 
-	if req.Url == "" {
-		return req, fmt.Errorf("Missing required key: url")
+	// Parse headers
+	headers := v.GetObject("headers")
+	headers.Visit(func(k []byte, v *fastjson.Value) {
+		req.Headers[b2s(k)] = b2s(v.GetStringBytes())
+	})
+
+	timestampVal := v.GetStringBytes("timestamp")
+	if timestampVal == nil {
+		return req, fmt.Errorf("missing required key: timestamp")
+
 	}
 
-	if req.Timestamp.IsZero() {
-		return req, fmt.Errorf("Missing required key: timestamp")
+	timestamp, err := time.Parse(time.RFC3339Nano, b2s(timestampVal))
+	if err != nil {
+		return req, fmt.Errorf("invalid timestamp: %v", timestamp)
 	}
+	req.Timestamp = timestamp
 
 	return req, nil
 }
@@ -87,4 +121,28 @@ func validMethod(requestMethod string) bool {
 		}
 	}
 	return false
+}
+
+func doHttpRequest(opts *Options, requests <-chan *Request, results chan<- *Result) {
+	for req := range requests {
+		latencyStart := time.Now()
+		if opts.DryRun {
+			sendToResult(opts, req, &fasthttp.Response{}, latencyStart, nil, results)
+		} else {
+			httpReq := req.fasthttpRequest()
+			httpResp := fasthttp.AcquireResponse()
+
+			client, err := getOrCreateHttpClient(opts, req)
+			if err != nil {
+				sendToResult(opts, req, httpResp, latencyStart, err, results)
+				return
+			}
+
+			err = client.DoTimeout(httpReq, httpResp, time.Duration(opts.Timeout)*time.Second)
+			sendToResult(opts, req, httpResp, latencyStart, err, results)
+
+			fasthttp.ReleaseRequest(httpReq)
+			fasthttp.ReleaseResponse(httpResp)
+		}
+	}
 }
