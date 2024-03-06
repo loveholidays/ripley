@@ -90,7 +90,7 @@ func unmarshalRequest(jsonRequest *[]byte) (*Request, error) {
 
 	// Validate
 	if !validMethod(req.Method) {
-		return req, fmt.Errorf("invalid method: %s", req.Method)
+		return req, fmt.Errorf("Invalid method: %s", req.Method)
 	}
 
 	// Parse headers
@@ -102,6 +102,7 @@ func unmarshalRequest(jsonRequest *[]byte) (*Request, error) {
 	timestampVal := v.GetStringBytes("timestamp")
 	if timestampVal == nil {
 		return req, fmt.Errorf("missing required key: timestamp")
+
 	}
 
 	timestamp, err := time.Parse(time.RFC3339Nano, b2s(timestampVal))

@@ -45,7 +45,7 @@ go run etc/dummyweb.go
 Loop 10 times over a set of HTTP requests at 1x rate for 10 seconds, then at 5x for 10 seconds, then at 10x for the remaining requests
 
 ```bash
-seq 10 | xargs -i cat etc/requests.jsonl | ./ripley -pace "10s@1 10s@5 1h@10"
+seq 10 | xargs -I{} cat etc/requests.jsonl | ./ripley -pace "10s@1 10s@5 1h@10"
 ```
 
 ## Replaying HTTP traffic
