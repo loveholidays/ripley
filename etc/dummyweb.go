@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
-	"time"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -13,7 +12,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	log.Printf("%v: %s\n", time.Now().Format(time.UnixDate), string(dump))
+	log.Printf("%s", string(dump))
 	w.Write([]byte("hi\n"))
 }
 

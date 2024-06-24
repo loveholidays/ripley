@@ -94,10 +94,10 @@ produces
 
 Results output can be suppressed using the `-silent` flag.
 
-For an example of working with ripley's output to generate statistics, refer to [etc/stats.go](https://github.com/loveholidays/ripley/blob/main/etc/stats.go)
+For an example of working with ripley's output to generate statistics, refer to https://gist.github.com/georgemalamidis-lh/39b4f4a6c9c82f6cc8b7370219e93cd2
 
 ```bash
-cat etc/requests.jsonl | ./ripley | go run ./etc/stats.go | jq
+cat etc/requests.jsonl | ./ripley | go run ripley_stats.go | jq
 ```
 
 ```JSON

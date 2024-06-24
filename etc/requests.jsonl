@@ -11,5 +11,4 @@
 {"url": "http://localhost:8080/", "method": "HEAD", "timestamp": "2021-11-08T19:00:00.00Z"}
 {"url": "http://localhost:8080/", "method": "OPTIONS", "timestamp": "2021-11-08T19:00:00.01Z"}
 {"url": "http://localhost:8080/", "method": "TRACE", "timestamp": "2021-11-08T19:00:00.02Z"}
-{"url": "http://localhost:8080/", "method": "PROPFIND", "timestamp": "2021-11-08T19:00:00.03Z"}
 {"url": "http://localhost:8080/", "method": "GET", "timestamp": "2021-11-08T19:00:00.04Z"}
