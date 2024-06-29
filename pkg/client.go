@@ -51,31 +51,29 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 		if dryRun {
 			sendResult(req, &http.Response{}, latencyStart, "", results)
 		} else {
-			go func() {
-				httpReq, err := req.httpRequest()
+			httpReq, err := req.httpRequest()
 
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
-				}
+			if err != nil {
+				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+				return
+			}
 
-				resp, err := client.Do(httpReq)
+			resp, err := client.Do(httpReq)
 
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
-				}
+			if err != nil {
+				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+				return
+			}
 
-				_, err = io.ReadAll(resp.Body)
-				defer resp.Body.Close()
+			_, err = io.ReadAll(resp.Body)
+			resp.Body.Close()
 
-				if err != nil {
-					sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-					return
-				}
+			if err != nil {
+				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+				return
+			}
 
-				sendResult(req, resp, latencyStart, "", results)
-			}()
+			sendResult(req, resp, latencyStart, "", results)
 		}
 	}
 }

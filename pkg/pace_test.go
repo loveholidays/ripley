@@ -52,9 +52,9 @@ func TestParseManyPhases(t *testing.T) {
 	}
 
 	expectedPhases := []*phase{
-		&phase{5 * time.Minute, 2.5},
-		&phase{20 * time.Minute, 5.0},
-		&phase{time.Hour + 30*time.Minute, 10.0}}
+		{5 * time.Minute, 2.5},
+		{20 * time.Minute, 5.0},
+		{time.Hour + 30*time.Minute, 10.0}}
 
 	if len(actualPhases) != len(expectedPhases) {
 		t.Errorf("len(actualPhases) = %v; want 3", len(expectedPhases))
@@ -96,7 +96,7 @@ func TestWaitDuration(t *testing.T) {
 	}
 }
 
-func TestWaitDuration5X(t *testing.T) {
+func TestWaitDuration10X(t *testing.T) {
 	pacer, err := newPacer("30s@10")
 
 	if err != nil {
