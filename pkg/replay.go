@@ -49,11 +49,33 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	}
 
 	// Read request JSONL input from STDIN
-	scanner := bufio.NewScanner(os.Stdin)
+	scanner := bufio.NewScanner(bufio.NewReaderSize(os.Stdin, 32*1024*1024))
 
 	// Start HTTP client goroutine pool
 	startClientWorkers(numWorkers, requests, results, dryRun, timeout)
 	pacer.start()
+
+	// Goroutine to handle the  HTTP client result
+	go func() {
+		for result := range results {
+			waitGroup.Done()
+
+			// If there's a panic elsewhere, this channel can return nil
+			if result == nil {
+				return
+			}
+
+			if !silent {
+				jsonResult, err := json.Marshal(result)
+
+				if err != nil {
+					panic(err)
+				}
+
+				fmt.Println(string(jsonResult))
+			}
+		}
+	}()
 
 	for scanner.Scan() {
 		req, err := unmarshalRequest(scanner.Bytes())
@@ -80,30 +102,8 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 		// The pacer decides how long to wait between requests
 		waitDuration := pacer.waitDuration(req.Timestamp)
 		time.Sleep(waitDuration)
-		requests <- req
 		waitGroup.Add(1)
-
-		// Goroutine to handle the  HTTP client result
-		go func() {
-			defer waitGroup.Done()
-
-			result := <-results
-
-			// If there's a panic elsewhere, this channel can return nil
-			if result == nil {
-				return
-			}
-
-			jsonResult, err := json.Marshal(result)
-
-			if err != nil {
-				panic(err)
-			}
-
-			if !silent {
-				fmt.Println(string(jsonResult))
-			}
-		}()
+		requests <- req
 	}
 
 	if scanner.Err() != nil {

@@ -28,18 +28,37 @@ import (
 )
 
 func main() {
+	exitCode := 0
+	defer os.Exit(exitCode)
+
 	paceStr := flag.String("pace", "10s@1", `[duration]@[rate], e.g. "1m@1 30s@1.5 1h@2"`)
 	silent := flag.Bool("silent", false, "Suppress output")
 	dryRun := flag.Bool("dry-run", false, "Consume input but do not send HTTP requests to targets")
 	timeout := flag.Int("timeout", 10, "HTTP client timeout in seconds")
 	strict := flag.Bool("strict", false, "Panic on bad input")
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
+	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to `file` before exit")
 	numWorkers := flag.Int("workers", 1000, "Number of client workers to use")
 
 	flag.Parse()
 
-	exitCode := ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers)
-	defer os.Exit(exitCode)
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+
+		if err != nil {
+			panic(err)
+		}
+
+		defer f.Close()
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			panic(err)
+		}
+
+		defer pprof.StopCPUProfile()
+	}
+
+	exitCode = ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers)
 
 	if *memprofile != "" {
 		f, err := os.Create(*memprofile)
