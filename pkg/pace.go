@@ -25,9 +25,12 @@ import (
 )
 
 type pacer struct {
-	phases          []*phase
-	lastRequestTime time.Time
-	done            bool
+	phases                []*phase
+	lastRequestTime       time.Time
+	lastRequestWallTime   time.Time
+	phaseStartWallTime    time.Time
+	phaseStartRequestTime time.Time
+	done                  bool
 }
 
 type phase struct {
@@ -53,6 +56,8 @@ func (p *pacer) start() {
 func (p *pacer) onPhaseElapsed() {
 	// Pop phase
 	p.phases = p.phases[1:]
+	p.phaseStartRequestTime = p.lastRequestTime
+	p.phaseStartWallTime = p.lastRequestWallTime
 
 	if len(p.phases) == 0 {
 		p.done = true
@@ -63,14 +68,24 @@ func (p *pacer) onPhaseElapsed() {
 }
 
 func (p *pacer) waitDuration(t time.Time) time.Duration {
+	now := time.Now()
+
 	// If there are no more phases left, continue with the last phase's rate
 	if p.lastRequestTime.IsZero() {
 		p.lastRequestTime = t
+		p.lastRequestWallTime = now
+		p.phaseStartRequestTime = p.lastRequestTime
+		p.phaseStartWallTime = p.lastRequestWallTime
 	}
 
-	duration := t.Sub(p.lastRequestTime)
+	originalDurationFromPhaseStart := t.Sub(p.phaseStartRequestTime)
+	expectedDurationFromPhaseStart := time.Duration(float64(originalDurationFromPhaseStart) / p.phases[0].rate)
+	expectedWallTime := p.phaseStartWallTime.Add(expectedDurationFromPhaseStart)
+
+	duration := expectedWallTime.Sub(now)
 	p.lastRequestTime = t
-	return time.Duration(float64(duration) / p.phases[0].rate)
+	p.lastRequestWallTime = now
+	return duration
 }
 
 // Format is [duration]@[rate] [duration]@[rate]..."
