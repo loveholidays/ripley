@@ -32,7 +32,7 @@ Grab the latest OS/Arch compatible binary from our [Releases](https://github.com
 ```bash
 git clone git@github.com:loveholidays/ripley.git
 cd ripley
-go build -o ripley main.go
+go build -o ripley cmd/ripley/main.go
 ```
 
 #### Quickstart from source
@@ -204,7 +204,7 @@ cat etc/outoforderrequests.jsonl | ./ripleysort | jq '.["timestamp"]'
 
 Build `ripleysort` with:
 ```bash
-go build -o ripley main.go
+go build -o ripleysort cmd/ripleysort/main.go
 ```
 
 
