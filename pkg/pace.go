@@ -26,10 +26,10 @@ import (
 
 type pacer struct {
 	phases                []*phase
-	lastRequestTime       time.Time
-	lastRequestWallTime   time.Time
-	phaseStartWallTime    time.Time
+	lastRequestTime       time.Time // last request that we already replayed in "log time"
+	lastRequestWallTime   time.Time // last request that we already replayed in "wall time"
 	phaseStartRequestTime time.Time
+	phaseStartWallTime    time.Time
 	done                  bool
 }
 
@@ -84,7 +84,7 @@ func (p *pacer) waitDuration(t time.Time) time.Duration {
 
 	duration := expectedWallTime.Sub(now)
 	p.lastRequestTime = t
-	p.lastRequestWallTime = now
+	p.lastRequestWallTime = expectedWallTime
 	return duration
 }
 
