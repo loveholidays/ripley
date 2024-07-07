@@ -39,7 +39,7 @@ func startClientWorkers(numWorkers int, requests <-chan *request, results chan<-
 		},
 	}
 
-	for i := 0; i <= numWorkers; i++ {
+	for i := 0; i < numWorkers; i++ {
 		go doHttpRequest(client, requests, results, dryRun)
 	}
 }
