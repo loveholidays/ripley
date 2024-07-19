@@ -19,8 +19,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
+	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -31,7 +33,17 @@ type Result struct {
 	ErrorMsg   string        `json:"error"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout int) {
+type WorkerPool struct {
+	client     *http.Client
+	requests   <-chan *request
+	results    chan<- *Result
+	dryRun     bool
+	maxWorkers int
+	workers    int
+	waitGroup  sync.WaitGroup
+}
+
+func NewWorkerPool(numWorkers int, maxWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout int) *WorkerPool {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -39,29 +51,58 @@ func startClientWorkers(numWorkers int, requests <-chan *request, results chan<-
 		},
 	}
 
-	for i := 0; i < numWorkers; i++ {
-		go doHttpRequest(client, requests, results, dryRun)
+	pool := WorkerPool{
+		client:     client,
+		requests:   requests,
+		results:    results,
+		dryRun:     dryRun,
+		maxWorkers: maxWorkers,
+		workers:    0,
 	}
+
+	for i := 0; i < numWorkers; i++ {
+		pool.StartWorker()
+	}
+
+	go func() {
+		for {
+			fmt.Printf("number of workers: %d/%d\n", pool.workers, pool.maxWorkers)
+			time.Sleep(time.Second)
+		}
+	}()
+
+	return &pool
 }
 
-func doHttpRequest(client *http.Client, requests <-chan *request, results chan<- *Result, dryRun bool) {
-	for req := range requests {
+func (w *WorkerPool) StartWorker() {
+	w.workers++
+	w.waitGroup.Add(1)
+	go w.doHttpRequest()
+}
+
+func (w *WorkerPool) Wait() {
+	w.waitGroup.Wait()
+}
+
+func (w *WorkerPool) doHttpRequest() {
+	defer w.waitGroup.Done()
+	for req := range w.requests {
 		latencyStart := time.Now()
 
-		if dryRun {
-			sendResult(req, &http.Response{}, latencyStart, "", results)
+		if w.dryRun {
+			sendResult(req, &http.Response{}, latencyStart, "", w.results)
 		} else {
 			httpReq, err := req.httpRequest()
 
 			if err != nil {
-				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+				sendResult(req, &http.Response{}, latencyStart, err.Error(), w.results)
 				return
 			}
 
-			resp, err := client.Do(httpReq)
+			resp, err := w.client.Do(httpReq)
 
 			if err != nil {
-				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+				sendResult(req, &http.Response{}, latencyStart, err.Error(), w.results)
 				return
 			}
 
@@ -69,11 +110,11 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 			resp.Body.Close()
 
 			if err != nil {
-				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+				sendResult(req, &http.Response{}, latencyStart, err.Error(), w.results)
 				return
 			}
 
-			sendResult(req, resp, latencyStart, "", results)
+			sendResult(req, resp, latencyStart, "", w.results)
 		}
 	}
 }
