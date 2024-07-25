@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/netutil"
 )
 
 var count atomic.Int64
@@ -26,7 +29,10 @@ func main() {
 			time.Sleep(time.Second)
 		}
 	}()
+	listener, _ := net.Listen("tcp", ":8080")
+
+	limitedListener := netutil.LimitListener(listener, 20000) // Limit to 10 connections
 
 	http.HandleFunc("/", handler)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.Serve(limitedListener, nil))
 }
