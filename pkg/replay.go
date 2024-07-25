@@ -29,7 +29,7 @@ import (
 
 func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int) int {
 	// Default exit code
-	var exitCode int = 0
+	var exitCode = 0
 	// Ensures we have handled all HTTP request results before exiting
 	var waitGroup sync.WaitGroup
 
@@ -58,22 +58,24 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	// Goroutine to handle the  HTTP client result
 	go func() {
 		for result := range results {
-			waitGroup.Done()
-
-			// If there's a panic elsewhere, this channel can return nil
-			if result == nil {
-				return
-			}
-
-			if !silent {
-				jsonResult, err := json.Marshal(result)
-
-				if err != nil {
-					panic(err)
+			r := result
+			go func() {
+				defer waitGroup.Done()
+				// If there's a panic elsewhere, this channel can return nil
+				if r == nil {
+					return
 				}
 
-				fmt.Println(string(jsonResult))
-			}
+				if !silent {
+					jsonResult, err := json.Marshal(r)
+
+					if err != nil {
+						panic(err)
+					}
+
+					fmt.Println(string(jsonResult))
+				}
+			}()
 		}
 	}()
 
