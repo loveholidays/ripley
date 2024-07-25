@@ -41,6 +41,32 @@ func main() {
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to `file` before exit")
 	numWorkers := flag.Int("workers", runtime.NumCPU()*2, "Number of client workers to use")
+	printStatsInterval := flag.Duration("print-stats", 0, `Statistics report interval, e.g., "1m"
+
+Each report line are printed to stderr with the following fields in logfmt format:
+
+  report_time
+    The calculated wall time for when this line should be printed in RFC3339 format.
+
+  skew_seconds
+    Difference between "report_time" and current time in seconds. When the absolute
+    value of this is higher than about 100ms, it shows that ripley cannot generate
+    enough load. Consider increasing workers, max connections, and/or CPU and IO requests.
+
+  last_request_time
+    Original request time of the last request in RFC3339 format.
+
+  rate
+    Current rate of playback as specified in "pace" flag.
+
+  expected_rps
+    Expected requests per seconds since that last report. This will differ from the
+    actual requests per seconds if the system is unable to drive that many requests.
+    If that is the case, consider increasing workers, max connections, and/or
+    CPU and IO requests.
+
+When 0 (default) or negative, reporting is switched off.
+  `)
 
 	flag.Parse()
 
@@ -60,7 +86,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	exitCode = ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections)
+	exitCode = ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections, *printStatsInterval)
 
 	if *memprofile != "" {
 		f, err := os.Create(*memprofile)

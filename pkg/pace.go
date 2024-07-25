@@ -19,18 +19,23 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type pacer struct {
+	ReportInterval        time.Duration
 	phases                []*phase
 	lastRequestTime       time.Time // last request that we already replayed in "log time"
 	lastRequestWallTime   time.Time // last request that we already replayed in "wall time"
 	phaseStartRequestTime time.Time
 	phaseStartWallTime    time.Time
 	done                  bool
+	requestCounter        int
+	nextReport            time.Time
 }
 
 type phase struct {
@@ -51,6 +56,9 @@ func newPacer(phasesStr string) (*pacer, error) {
 func (p *pacer) start() {
 	// Run a timer for the first phase's duration
 	time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
+	if p.ReportInterval > 0 {
+		p.nextReport = time.Now().Add(p.ReportInterval)
+	}
 }
 
 func (p *pacer) onPhaseElapsed() {
@@ -70,7 +78,6 @@ func (p *pacer) onPhaseElapsed() {
 func (p *pacer) waitDuration(t time.Time) time.Duration {
 	now := time.Now()
 
-	// If there are no more phases left, continue with the last phase's rate
 	if p.lastRequestTime.IsZero() {
 		p.lastRequestTime = t
 		p.lastRequestWallTime = now
@@ -82,10 +89,29 @@ func (p *pacer) waitDuration(t time.Time) time.Duration {
 	expectedDurationFromPhaseStart := time.Duration(float64(originalDurationFromPhaseStart) / p.phases[0].rate)
 	expectedWallTime := p.phaseStartWallTime.Add(expectedDurationFromPhaseStart)
 
+	p.reportStats(now, expectedWallTime)
+
 	duration := expectedWallTime.Sub(now)
 	p.lastRequestTime = t
 	p.lastRequestWallTime = expectedWallTime
 	return duration
+}
+
+func (p *pacer) reportStats(now, expectedWallTime time.Time) {
+	if p.ReportInterval <= 0 {
+		return
+	}
+	for p.nextReport.Before(expectedWallTime) {
+		fmt.Fprintf(os.Stderr, "report_time=%s skew_seconds=%f last_request_time=%s rate=%f expected_rps=%d\n",
+			p.nextReport.Format(time.RFC3339),
+			now.Sub(p.nextReport).Seconds(),
+			p.lastRequestTime.Format(time.RFC3339),
+			p.phases[0].rate, // note that this is correct... the phase change itself is incorrect, but its error is minimal with enough requests, and it is simpler
+			p.requestCounter/int(p.ReportInterval.Seconds()))
+		p.nextReport = p.nextReport.Add(p.ReportInterval)
+		p.requestCounter = 0
+	}
+	p.requestCounter++
 }
 
 // Format is [duration]@[rate] [duration]@[rate]..."
