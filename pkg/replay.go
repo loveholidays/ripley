@@ -20,11 +20,11 @@ package ripley
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
-	"time"
 )
 
 func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int) int {
@@ -41,19 +41,11 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	results := make(chan *Result)
 	defer close(results)
 
-	// The pacer controls the rate of replay
-	pacer, err := newPacer(phasesStr)
-
-	if err != nil {
-		panic(err)
-	}
-
 	// Read request JSONL input from STDIN
 	scanner := bufio.NewScanner(bufio.NewReaderSize(os.Stdin, 32*1024*1024))
 
 	// Start HTTP client goroutine pool
 	startClientWorkers(numWorkers, requests, results, dryRun, timeout, connections, maxConnections)
-	pacer.start()
 
 	// Goroutine to handle the  HTTP client result
 	go func() {
@@ -65,19 +57,22 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 				if r == nil {
 					return
 				}
-
 				if !silent {
 					jsonResult, err := json.Marshal(r)
-
 					if err != nil {
 						panic(err)
 					}
-
 					fmt.Println(string(jsonResult))
 				}
 			}()
 		}
 	}()
+
+	// The pacer controls the rate of replay
+	pacer, err := NewPhaseTicker(context.TODO(), phasesStr)
+	if err != nil {
+		panic(err)
+	}
 
 	for scanner.Scan() {
 		req, err := unmarshalRequest(scanner.Bytes())
@@ -97,13 +92,7 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 			continue
 		}
 
-		if pacer.done {
-			break
-		}
-
-		// The pacer decides how long to wait between requests
-		waitDuration := pacer.waitDuration(req.Timestamp)
-		time.Sleep(waitDuration)
+		<-pacer
 		waitGroup.Add(1)
 		requests <- req
 	}
