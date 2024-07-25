@@ -69,8 +69,8 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 				return
 			}
 
-			_, err = io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_, err = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
 
 			if err != nil {
 				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
