@@ -73,32 +73,41 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	if err != nil {
 		panic(err)
 	}
+	// Send requests for the HTTP client workers to pick up on this channel
+	requestsBuffer := make(chan *request, 100)
 
-	for scanner.Scan() {
-		req, err := unmarshalRequest(scanner.Bytes())
-		if err != nil {
-			exitCode = 126
-			result, _ := json.Marshal(Result{
-				StatusCode: 0,
-				Latency:    0,
-				Request:    req,
-				ErrorMsg:   fmt.Sprintf("%v", err),
-			})
-			fmt.Println(string(result))
+	go func() {
+		defer close(requestsBuffer)
+		for scanner.Scan() {
+			req, err := unmarshalRequest(scanner.Bytes())
+			if err != nil {
+				exitCode = 126
+				result, _ := json.Marshal(Result{
+					StatusCode: 0,
+					Latency:    0,
+					Request:    req,
+					ErrorMsg:   fmt.Sprintf("%v", err),
+				})
+				fmt.Println(string(result))
 
-			if strict {
-				panic(err)
+				if strict {
+					panic(err)
+				}
+				continue
 			}
-			continue
+
+			requestsBuffer <- req
 		}
 
+		if scanner.Err() != nil {
+			panic(scanner.Err())
+		}
+	}()
+
+	for req := range requestsBuffer {
 		<-pacer
 		waitGroup.Add(1)
 		requests <- req
-	}
-
-	if scanner.Err() != nil {
-		panic(scanner.Err())
 	}
 
 	waitGroup.Wait()
