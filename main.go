@@ -43,7 +43,7 @@ func main() {
 	numWorkers := flag.Int("workers", runtime.NumCPU()*2, "Number of client workers to use")
 	printStatsInterval := flag.Duration("print-stats", 0, `Statistics report interval, e.g., "1m"
 
-Each report line are printed to stderr with the following fields in logfmt format:
+Each report line is printed to stderr with the following fields in logfmt format:
 
   report_time
     The calculated wall time for when this line should be printed in RFC3339 format.
@@ -60,8 +60,8 @@ Each report line are printed to stderr with the following fields in logfmt forma
     Current rate of playback as specified in "pace" flag.
 
   expected_rps
-    Expected requests per seconds since that last report. This will differ from the
-    actual requests per seconds if the system is unable to drive that many requests.
+    Expected requests per second since the last report. This will differ from the
+    actual requests per second if the system is unable to drive that many requests.
     If that is the case, consider increasing workers, max connections, and/or
     CPU and IO requests.
 
