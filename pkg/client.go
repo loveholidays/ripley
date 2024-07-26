@@ -31,15 +31,19 @@ type Result struct {
 	ErrorMsg   string        `json:"error"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout int) {
+func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout, connections, maxConnections int) {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: connections,
+			MaxConnsPerHost:     maxConnections,
+		},
 	}
 
-	for i := 0; i <= numWorkers; i++ {
+	for i := 0; i < numWorkers; i++ {
 		go doHttpRequest(client, requests, results, dryRun)
 	}
 }

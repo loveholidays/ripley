@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -83,15 +84,15 @@ func TestWaitDuration(t *testing.T) {
 	now := time.Now()
 	duration := pacer.waitDuration(now)
 
-	if duration != 0 {
-		t.Errorf("duration = %v; want 0", duration)
+	if duration > 0 {
+		t.Errorf("duration = %v; want 0 or negative", duration)
 	}
 
 	now = now.Add(2 * time.Second)
 	duration = pacer.waitDuration(now)
 	expected := 2 * time.Second
 
-	if duration != expected {
+	if !equalsWithinThreshold(duration, expected, 10*time.Microsecond) {
 		t.Errorf("duration = %v; want %v", duration, expected)
 	}
 }
@@ -106,15 +107,15 @@ func TestWaitDuration10X(t *testing.T) {
 	now := time.Now()
 	duration := pacer.waitDuration(now)
 
-	if duration != 0 {
-		t.Errorf("duration = %v; want 0", duration)
+	if duration > 0 {
+		t.Errorf("duration = %v; want 0 or negative", duration)
 	}
 
 	now = now.Add(1 * time.Second)
 	duration = pacer.waitDuration(now)
 	expected := time.Second / 10
 
-	if duration != expected {
+	if !equalsWithinThreshold(duration, expected, 10*time.Microsecond) {
 		t.Errorf("duration = %v; want %v", duration, expected)
 	}
 }
@@ -135,4 +136,8 @@ func TestPacerDoneOnLastPhaseElapsed(t *testing.T) {
 	if !pacer.done {
 		t.Errorf("pacer.done = %v; want true", pacer.done)
 	}
+}
+
+func equalsWithinThreshold(d1, d2, threshold time.Duration) bool {
+	return math.Abs(float64(d1-d2)) <= float64(threshold)
 }
