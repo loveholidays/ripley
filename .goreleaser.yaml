@@ -1,3 +1,5 @@
+version: 2
+
 release:
   mode: replace
 
@@ -31,13 +33,13 @@ changelog:
 brews:
   -
     name: ripley
-    tap:
+    repository:
       owner: loveholidays
       name: homebrew-tap
     commit_author:
       name: loveholidays
       email: oss@loveholidays.com
-    folder: Formula
+    directory: Formula
     homepage: "https://github.com/loveholidays/ripley"
     description: "Replays HTTP traffic at multiples of the original rate"
     install: |
