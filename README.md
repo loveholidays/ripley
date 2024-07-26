@@ -131,4 +131,4 @@ go test pkg/*.go
 ```
 
 ## Releasing new versions
-Push of a new tag onto `main` will trigger GoReleaser process.
+Push a new tag to `main` to trigger the GoReleaser process.
