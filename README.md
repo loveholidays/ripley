@@ -129,3 +129,6 @@ cat etc/requests.jsonl | ./ripley -pace "30s@1" -dry-run
 ```bash
 go test pkg/*.go
 ```
+
+## Releasing new versions
+Push a new tag to `main` to trigger the GoReleaser process.

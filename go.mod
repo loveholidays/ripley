@@ -1,3 +1,3 @@
 module github.com/loveholidays/ripley
 
-go 1.17
+go 1.22
