@@ -23,11 +23,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type pacer struct {
 	ReportInterval        time.Duration
+	mu                    sync.RWMutex // protects all fields below
 	phases                []*phase
 	lastRequestTime       time.Time // last request that we already replayed in "log time"
 	lastRequestWallTime   time.Time // last request that we already replayed in "wall time"
@@ -54,16 +56,26 @@ func newPacer(phasesStr string) (*pacer, error) {
 }
 
 func (p *pacer) start() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	
 	// Run a timer for the first phase's duration
-	time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
+	if len(p.phases) > 0 {
+		time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
+	}
 	if p.ReportInterval > 0 {
 		p.nextReport = time.Now().Add(p.ReportInterval)
 	}
 }
 
 func (p *pacer) onPhaseElapsed() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	
 	// Pop phase
-	p.phases = p.phases[1:]
+	if len(p.phases) > 0 {
+		p.phases = p.phases[1:]
+	}
 	p.phaseStartRequestTime = p.lastRequestTime
 	p.phaseStartWallTime = p.lastRequestWallTime
 
@@ -76,6 +88,9 @@ func (p *pacer) onPhaseElapsed() {
 }
 
 func (p *pacer) waitDuration(t time.Time) time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	
 	now := time.Now()
 
 	if p.lastRequestTime.IsZero() {
@@ -83,6 +98,11 @@ func (p *pacer) waitDuration(t time.Time) time.Duration {
 		p.lastRequestWallTime = now
 		p.phaseStartRequestTime = p.lastRequestTime
 		p.phaseStartWallTime = p.lastRequestWallTime
+	}
+
+	// Check if we have any phases left
+	if len(p.phases) == 0 {
+		return 0
 	}
 
 	originalDurationFromPhaseStart := t.Sub(p.phaseStartRequestTime)
@@ -97,16 +117,29 @@ func (p *pacer) waitDuration(t time.Time) time.Duration {
 	return duration
 }
 
+func (p *pacer) isDone() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.done
+}
+
 func (p *pacer) reportStats(now, expectedWallTime time.Time) {
 	if p.ReportInterval <= 0 {
 		return
 	}
+	
+	// Get current rate safely
+	var currentRate float64 = 1.0
+	if len(p.phases) > 0 {
+		currentRate = p.phases[0].rate
+	}
+	
 	for p.nextReport.Before(expectedWallTime) {
 		fmt.Fprintf(os.Stderr, "report_time=%s skew_seconds=%f last_request_time=%s rate=%f expected_rps=%d\n",
 			p.nextReport.Format(time.RFC3339),
 			now.Sub(p.nextReport).Seconds(),
 			p.lastRequestTime.Format(time.RFC3339),
-			p.phases[0].rate, // note that this is correct... the phase change itself is incorrect, but its error is minimal with enough requests, and it is simpler
+			currentRate,
 			p.requestCounter/int(p.ReportInterval.Seconds()))
 		p.nextReport = p.nextReport.Add(p.ReportInterval)
 		p.requestCounter = 0
