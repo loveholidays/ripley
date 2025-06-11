@@ -32,14 +32,14 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	var exitCode int = 0
 	// Ensures we have handled all HTTP request results before exiting
 	var waitGroup sync.WaitGroup
+	// Ensures result handler goroutine completes before closing results channel
+	var resultHandlerWG sync.WaitGroup
 
 	// Send requests for the HTTP client workers to pick up on this channel
 	requests := make(chan *request)
-	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
 	results := make(chan *Result)
-	defer close(results)
 
 	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
@@ -57,7 +57,9 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	pacer.start()
 
 	// Goroutine to handle the  HTTP client result
+	resultHandlerWG.Add(1)
 	go func() {
+		defer resultHandlerWG.Done()
 		for result := range results {
 			waitGroup.Done()
 
@@ -96,7 +98,7 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 			continue
 		}
 
-		if pacer.done {
+		if pacer.isDone() {
 			break
 		}
 
@@ -111,7 +113,17 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 		panic(scanner.Err())
 	}
 
+	// Close requests channel to signal worker goroutines to stop
+	close(requests)
+	
+	// Wait for all HTTP requests to complete
 	waitGroup.Wait()
+	
+	// Close results channel to signal result handler to stop
+	close(results)
+	
+	// Wait for result handler to finish processing all results
+	resultHandlerWG.Wait()
 
 	return exitCode
 }
