@@ -5,19 +5,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loveholidays/ripley/tools/linkerdxripley/pkg/linkerd"
 	ripley "github.com/loveholidays/ripley/pkg"
+	"github.com/loveholidays/ripley/tools/linkerdxripley/pkg/linkerd"
 )
 
 func TestConverter_ConvertToRipley(t *testing.T) {
 	conv := New()
 
 	tests := []struct {
-		name        string
-		linkerdReq  linkerd.Request
-		newHost     string
-		expectError bool
-		expected    *ripley.Request
+		name         string
+		linkerdReq   linkerd.Request
+		newHost      string
+		upgradeHTTPS bool
+		expectError  bool
+		expected     *ripley.Request
 	}{
 		{
 			name: "basic conversion without host change",
@@ -36,15 +37,15 @@ func TestConverter_ConvertToRipley(t *testing.T) {
 				UserAgent:    "TestClient/1.0",
 				Version:      "HTTP/2.0",
 			},
-			newHost:     "",
-			expectError: false,
+			newHost:      "",
+			upgradeHTTPS: false,
+			expectError:  false,
 			expected: &ripley.Request{
 				Method:    "GET",
 				Url:       "http://api-service.test.svc.cluster.local/api/v1/data?id=12345",
 				Timestamp: mustParseTime("2025-09-03T15:30:32.928995068Z"),
 				Headers: map[string]string{
 					"User-Agent": "TestClient/1.0",
-					"Host":       "api-service.test.svc.cluster.local",
 				},
 			},
 		},
@@ -65,7 +66,6 @@ func TestConverter_ConvertToRipley(t *testing.T) {
 				Timestamp: mustParseTime("2025-09-03T15:30:32.928995068Z"),
 				Headers: map[string]string{
 					"User-Agent": "TestAgent/1.0",
-					"Host":       "api.test.com",
 				},
 			},
 		},
@@ -84,9 +84,7 @@ func TestConverter_ConvertToRipley(t *testing.T) {
 				Method:    "GET",
 				Url:       "http://api.test.com/endpoint",
 				Timestamp: mustParseTime("2025-09-03T15:30:32.928995068Z"),
-				Headers: map[string]string{
-					"Host": "api.test.com",
-				},
+				Headers:   map[string]string{},
 			},
 		},
 		{
@@ -140,15 +138,78 @@ func TestConverter_ConvertToRipley(t *testing.T) {
 				URI:       "http://search-api.test.com/search?q=test&category=books&page=1&limit=10&sort=price",
 				UserAgent: "TestBrowser/2.0",
 			},
-			newHost:     "staging.search-api.test.com:9000",
-			expectError: false,
+			newHost:      "staging.search-api.test.com:9000",
+			upgradeHTTPS: false,
+			expectError:  false,
 			expected: &ripley.Request{
 				Method:    "GET",
 				Url:       "http://staging.search-api.test.com:9000/search?q=test&category=books&page=1&limit=10&sort=price",
 				Timestamp: mustParseTime("2025-09-03T15:30:32.928995068Z"),
 				Headers: map[string]string{
 					"User-Agent": "TestBrowser/2.0",
-					"Host":       "search-api.test.com",
+				},
+			},
+		},
+		{
+			name: "HTTP to HTTPS upgrade without host change",
+			linkerdReq: linkerd.Request{
+				Method:    "GET",
+				Host:      "api.test.com",
+				Timestamp: "2025-09-03T15:30:32.928995068Z",
+				URI:       "http://api.test.com/secure-endpoint",
+				UserAgent: "TestAgent/1.0",
+			},
+			newHost:      "",
+			upgradeHTTPS: true,
+			expectError:  false,
+			expected: &ripley.Request{
+				Method:    "GET",
+				Url:       "https://api.test.com/secure-endpoint",
+				Timestamp: mustParseTime("2025-09-03T15:30:32.928995068Z"),
+				Headers: map[string]string{
+					"User-Agent": "TestAgent/1.0",
+				},
+			},
+		},
+		{
+			name: "HTTP to HTTPS upgrade with host change",
+			linkerdReq: linkerd.Request{
+				Method:    "GET",
+				Host:      "api.test.com",
+				Timestamp: "2025-09-03T15:30:32.928995068Z",
+				URI:       "http://api.test.com/secure-endpoint",
+				UserAgent: "TestAgent/1.0",
+			},
+			newHost:      "localhost:8443",
+			upgradeHTTPS: true,
+			expectError:  false,
+			expected: &ripley.Request{
+				Method:    "GET",
+				Url:       "https://localhost:8443/secure-endpoint",
+				Timestamp: mustParseTime("2025-09-03T15:30:32.928995068Z"),
+				Headers: map[string]string{
+					"User-Agent": "TestAgent/1.0",
+				},
+			},
+		},
+		{
+			name: "HTTPS request remains HTTPS (no downgrade)",
+			linkerdReq: linkerd.Request{
+				Method:    "GET",
+				Host:      "secure-api.test.com",
+				Timestamp: "2025-09-03T15:30:32.928995068Z",
+				URI:       "https://secure-api.test.com/endpoint",
+				UserAgent: "TestAgent/1.0",
+			},
+			newHost:      "localhost:8443",
+			upgradeHTTPS: true,
+			expectError:  false,
+			expected: &ripley.Request{
+				Method:    "GET",
+				Url:       "https://localhost:8443/endpoint",
+				Timestamp: mustParseTime("2025-09-03T15:30:32.928995068Z"),
+				Headers: map[string]string{
+					"User-Agent": "TestAgent/1.0",
 				},
 			},
 		},
@@ -156,7 +217,7 @@ func TestConverter_ConvertToRipley(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := conv.ConvertToRipley(tt.linkerdReq, tt.newHost)
+			result, err := conv.ConvertToRipley(tt.linkerdReq, tt.newHost, tt.upgradeHTTPS)
 
 			if tt.expectError {
 				if err == nil {
@@ -257,8 +318,8 @@ func TestConverter_buildTargetURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := conv.buildTargetURL(tt.originalURI, tt.newHost)
-			
+			result, err := conv.buildTargetURL(tt.originalURI, tt.newHost, false)
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("expected error but got none")
@@ -346,7 +407,7 @@ func TestConverter_buildHeaders(t *testing.T) {
 
 func TestJSONSerialization(t *testing.T) {
 	conv := New()
-	
+
 	linkerdReq := linkerd.Request{
 		Method:    "GET",
 		Host:      "api.test.com",
@@ -355,7 +416,7 @@ func TestJSONSerialization(t *testing.T) {
 		UserAgent: "TestAgent/1.0",
 	}
 
-	ripleyReq, err := conv.ConvertToRipley(linkerdReq, "")
+	ripleyReq, err := conv.ConvertToRipley(linkerdReq, "", false)
 	if err != nil {
 		t.Fatalf("conversion failed: %v", err)
 	}

@@ -50,7 +50,8 @@ logcli --addr=http://localhost:3100 query \
     --forward \
     --output=raw \
     --limit=0 \
-    '{app="your-app", container="linkerd-proxy"} |= `"method":"GET"` != `"uri":"/healthz"` != `"uri":"/metrics"`' \
+    '{app="your-app
+    ", container="linkerd-proxy"} |= `"method":"GET"` != `"uri":"/healthz"` != `"uri":"/metrics"`' \
     > linkerd-logs.txt
 ```
 
@@ -72,14 +73,25 @@ cat linkerd_logs.jsonl | linkerdxripley > ripley_requests.jsonl
 cat linkerd_logs.jsonl | linkerdxripley -host localhost:8080 > ripley_requests.jsonl
 ```
 
+### With HTTPS upgrade
+```bash
+cat linkerd_logs.jsonl | linkerdxripley -https > ripley_requests.jsonl
+```
+
+### Combined host modification and HTTPS upgrade
+```bash
+cat linkerd_logs.jsonl | linkerdxripley -host localhost:8443 -https > ripley_requests.jsonl
+```
+
 ### Full pipeline with Ripley
 ```bash
-cat linkerd_logs.jsonl | linkerdxripley -host staging.api.com:9000 | ripley -pace "10s@1 30s@5"
+cat linkerd_logs.jsonl | linkerdxripley -host staging.api.com:9000 -https | ripley -pace "10s@1 30s@5"
 ```
 
 ## Options
 
 - `-host string`: Replace the original host in URLs with a new host (optional)
+- `-https`: Upgrade HTTP requests to HTTPS (optional)
 - `-help`: Show usage information
 
 ## Input Format (Linkerd JSONL)
@@ -167,14 +179,14 @@ logcli --addr=http://localhost:3100 query \
 
 2. **Convert and replay for load testing:**
 ```bash
-# Test against local environment
+# Test against local environment with HTTPS
 cat production-linkerd.jsonl | \
-  linkerdxripley -host localhost:3000 | \
+  linkerdxripley -host localhost:3000 -https | \
   ripley -pace "1m@0.1"
 
-# Test against staging with ramped load
+# Test against staging with ramped load and HTTPS
 cat production-linkerd.jsonl | \
-  linkerdxripley -host staging.myapi.com | \
+  linkerdxripley -host staging.myapi.com -https | \
   ripley -pace "30s@1 5m@2 10m@5"
 ```
 

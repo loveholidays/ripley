@@ -16,6 +16,7 @@ import (
 func main() {
 	var (
 		newHost = flag.String("host", "", "New host to replace the original host in URLs")
+		https   = flag.Bool("https", false, "Upgrade HTTP requests to HTTPS")
 		help    = flag.Bool("help", false, "Show usage information")
 	)
 	flag.Parse()
@@ -25,13 +26,16 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: linkerdxripley [options] < input.jsonl > output.jsonl\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExample:\n")
-		fmt.Fprintf(os.Stderr, "  cat linkerd.jsonl | linkerdxripley -host localhost:8080 > ripley.jsonl\n\n")
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  cat linkerd.jsonl | linkerdxripley -host localhost:8080 > ripley.jsonl\n")
+		fmt.Fprintf(os.Stderr, "  cat linkerd.jsonl | linkerdxripley -host localhost:8080 -https > ripley.jsonl\n\n")
 		return
 	}
 
 	conv := converter.New()
 	scanner := bufio.NewScanner(os.Stdin)
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetEscapeHTML(false)
 	
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -46,19 +50,16 @@ func main() {
 			continue
 		}
 
-		ripleyReq, err := conv.ConvertToRipley(linkerdReq, *newHost)
+		ripleyReq, err := conv.ConvertToRipley(linkerdReq, *newHost, *https)
 		if err != nil {
 			log.Printf("failed to convert request: %v", err)
 			continue
 		}
 
-		ripleyJSON, err := json.Marshal(ripleyReq)
-		if err != nil {
-			log.Printf("failed to marshal ripley request: %v", err)
+		if err := encoder.Encode(ripleyReq); err != nil {
+			log.Printf("failed to encode ripley request: %v", err)
 			continue
 		}
-
-		fmt.Println(string(ripleyJSON))
 	}
 
 	if err := scanner.Err(); err != nil {
