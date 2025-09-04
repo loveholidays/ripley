@@ -30,11 +30,11 @@ import (
 func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, printStatsInterval time.Duration) int {
 	// Default exit code
 	var exitCode int = 0
-	// Ensures we have handled all HTTP request results before exiting
+	// Ensures we have handled all HTTP Request results before exiting
 	var waitGroup sync.WaitGroup
 
 	// Send requests for the HTTP client workers to pick up on this channel
-	requests := make(chan *request)
+	requests := make(chan *Request)
 	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
@@ -49,7 +49,7 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 		panic(err)
 	}
 
-	// Read request JSONL input from STDIN
+	// Read Request JSONL input from STDIN
 	scanner := bufio.NewScanner(bufio.NewReaderSize(os.Stdin, 32*1024*1024))
 
 	// Start HTTP client goroutine pool
