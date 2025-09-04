@@ -6,6 +6,60 @@ A CLI tool to convert Linkerd JSONL format to Ripley format for HTTP traffic rep
 
 This tool reads Linkerd service mesh access logs in JSONL format from stdin and converts them to Ripley's expected format, allowing you to replay real production traffic patterns for load testing.
 
+## Prerequisites
+
+### Enable Linkerd Access Logging
+
+To collect access logs from Linkerd, you need to add this annotation to your pods:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: your-app
+spec:
+  template:
+    metadata:
+      annotations:
+        config.linkerd.io/access-log: json
+    spec:
+      # ... rest of your pod spec
+```
+
+This annotation tells Linkerd to start writing JSON-formatted access logs to stdout.
+
+### Collecting Logs with Loki
+
+If you're using Loki for log aggregation, you can extract Linkerd logs using `logcli`:
+
+#### Install logcli
+```bash
+brew install logcli
+```
+
+#### Port Forward to Loki
+```bash
+kubectl port-forward -n loki deployment/loki-query-frontend 3100:3100
+```
+
+#### Query Linkerd Logs
+```bash
+logcli --addr=http://localhost:3100 query \
+    --from="2025-09-03T15:26:52Z" \
+    --to="2025-09-03T16:34:32Z" \
+    --forward \
+    --output=raw \
+    --limit=0 \
+    '{app="your-app", container="linkerd-proxy"} |= `"method":"GET"` != `"uri":"/healthz"` != `"uri":"/metrics"`' \
+    > linkerd-logs.txt
+```
+
+This query:
+- Filters for logs from the `linkerd-proxy` container
+- Includes only GET requests 
+- Excludes health check and metrics endpoints
+- Outputs raw JSON format suitable for this tool
+
 ## Usage
 
 ### Basic conversion
@@ -93,17 +147,42 @@ cat testdata/linkerd_sample.jsonl | go run main.go -host localhost:8080
 
 ## Examples
 
-### Convert production logs for local testing
+### Complete Workflow: Loki to Ripley
+
+1. **Extract logs from Loki:**
 ```bash
-kubectl logs -n linkerd-viz deployment/tap --since=1h | \
+# Use the pre-configured port forward to Loki
+kubectl port-forward -n loki deployment/loki-query-frontend 3100:3100
+
+# Query and save Linkerd logs (adjust app name and time range)
+logcli --addr=http://localhost:3100 query \
+    --from="2025-09-03T15:26:52Z" \
+    --to="2025-09-03T16:34:32Z" \
+    --forward \
+    --output=raw \
+    --limit=0 \
+    '{app="your-app", container="linkerd-proxy"} |= `"method":"GET"` != `"uri":"/healthz"` != `"uri":"/metrics"`' \
+    > production-linkerd.jsonl
+```
+
+2. **Convert and replay for load testing:**
+```bash
+# Test against local environment
+cat production-linkerd.jsonl | \
+  linkerdxripley -host localhost:3000 | \
+  ripley -pace "1m@0.1"
+
+# Test against staging with ramped load
+cat production-linkerd.jsonl | \
+  linkerdxripley -host staging.myapi.com | \
+  ripley -pace "30s@1 5m@2 10m@5"
+```
+
+### Alternative: Direct kubectl logs
+If not using Loki, get logs directly from kubectl:
+```bash
+kubectl logs -n your-namespace deployment/your-app -c linkerd-proxy --since=1h | \
   grep -E '^{' | \
   linkerdxripley -host localhost:3000 | \
   ripley -pace "1m@0.1"
-```
-
-### Replay at different rates against staging
-```bash
-cat production_linkerd.jsonl | \
-  linkerdxripley -host staging.myapi.com | \
-  ripley -pace "30s@1 5m@2 10m@5"
 ```
