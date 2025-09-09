@@ -83,6 +83,6 @@ func doHttpRequest(client *http.Client, requests <-chan *Request, results chan<-
 }
 
 func sendResult(req *Request, resp *http.Response, latencyStart time.Time, err string, results chan<- *Result) {
-	latency := time.Now().Sub(latencyStart)
+	latency := time.Since(latencyStart)
 	results <- &Result{StatusCode: resp.StatusCode, Latency: latency, Request: req, ErrorMsg: err}
 }
