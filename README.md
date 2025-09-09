@@ -124,6 +124,91 @@ It is possible to disable sending HTTP requests to the targets with the `-dry-ru
 cat etc/requests.jsonl | ./ripley -pace "30s@1" -dry-run
 ```
 
+## Converting Linkerd Access Logs
+
+The `linkerdxripley` tool converts [Linkerd](https://linkerd.io/) JSONL access logs into Ripley's request format, enabling you to replay production Linkerd traffic for load testing.
+
+### Installation
+
+Build from source:
+```bash
+cd tools/linkerdxripley
+go build -o linkerdxripley main.go
+```
+
+Or install directly:
+```bash
+go install github.com/loveholidays/ripley/tools/linkerdxripley@latest
+```
+
+### Usage
+
+Basic conversion:
+```bash
+cat linkerd.jsonl | linkerdxripley > ripley.jsonl
+```
+
+Convert with host replacement:
+```bash
+cat linkerd.jsonl | linkerdxripley -host localhost:8080 > ripley.jsonl
+```
+
+Convert with HTTPS upgrade:
+```bash
+cat linkerd.jsonl | linkerdxripley -host localhost:8443 -https > ripley.jsonl
+```
+
+Full pipeline (convert and replay):
+```bash
+cat linkerd.jsonl | linkerdxripley -host localhost:8080 | ./ripley -pace "1m@2 5m@5"
+```
+
+### Input Format
+
+The tool expects Linkerd JSONL access logs with these fields:
+
+```json
+{
+  "client.addr": "192.168.1.100:12345",
+  "client.id": "service.namespace.serviceaccount.identity.linkerd.cluster.local",
+  "host": "api.example.com",
+  "method": "GET",
+  "processing_ns": "50000",
+  "request_bytes": "256",
+  "status": 200,
+  "timestamp": "2025-09-03T15:30:32.928995068Z",
+  "total_ns": "2500000",
+  "trace_id": "abc123",
+  "uri": "http://api.example.com/api/v1/data?id=123",
+  "user_agent": "MyApp/1.0",
+  "version": "HTTP/2.0"
+}
+```
+
+Required fields: `method`, `timestamp`, `uri`
+
+### Output Format
+
+Produces Ripley-compatible JSONL:
+
+```json
+{
+  "method": "GET",
+  "url": "http://localhost:8080/api/v1/data?id=123",
+  "body": "",
+  "timestamp": "2025-09-03T15:30:32.928995068Z",
+  "headers": {
+    "User-Agent": "MyApp/1.0"
+  }
+}
+```
+
+### Command Options
+
+- `-host <host:port>` - Replace the original host with a new target host
+- `-https` - Upgrade HTTP requests to HTTPS (useful for local testing with TLS)
+- `-help` - Show usage information
+
 ## Running the tests
 
 ```bash
