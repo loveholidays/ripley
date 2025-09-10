@@ -29,8 +29,8 @@ import (
 type pacer struct {
 	ReportInterval        time.Duration
 	phases                []*phase
-	lastRequestTime       time.Time // last request that we already replayed in "log time"
-	lastRequestWallTime   time.Time // last request that we already replayed in "wall time"
+	lastRequestTime       time.Time // last Request that we already replayed in "log time"
+	lastRequestWallTime   time.Time // last Request that we already replayed in "wall time"
 	phaseStartRequestTime time.Time
 	phaseStartWallTime    time.Time
 	done                  bool

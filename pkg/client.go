@@ -27,11 +27,11 @@ import (
 type Result struct {
 	StatusCode int           `json:"statusCode"`
 	Latency    time.Duration `json:"latency"`
-	Request    *request      `json:"request"`
+	Request    *Request      `json:"Request"`
 	ErrorMsg   string        `json:"error"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *request, results chan<- *Result, dryRun bool, timeout, connections, maxConnections int) {
+func startClientWorkers(numWorkers int, requests <-chan *Request, results chan<- *Result, dryRun bool, timeout, connections, maxConnections int) {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -48,7 +48,7 @@ func startClientWorkers(numWorkers int, requests <-chan *request, results chan<-
 	}
 }
 
-func doHttpRequest(client *http.Client, requests <-chan *request, results chan<- *Result, dryRun bool) {
+func doHttpRequest(client *http.Client, requests <-chan *Request, results chan<- *Result, dryRun bool) {
 	for req := range requests {
 		latencyStart := time.Now()
 
@@ -82,7 +82,7 @@ func doHttpRequest(client *http.Client, requests <-chan *request, results chan<-
 	}
 }
 
-func sendResult(req *request, resp *http.Response, latencyStart time.Time, err string, results chan<- *Result) {
-	latency := time.Now().Sub(latencyStart)
+func sendResult(req *Request, resp *http.Response, latencyStart time.Time, err string, results chan<- *Result) {
+	latency := time.Since(latencyStart)
 	results <- &Result{StatusCode: resp.StatusCode, Latency: latency, Request: req, ErrorMsg: err}
 }

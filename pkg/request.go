@@ -30,7 +30,7 @@ var (
 	validMethods = [9]string{"GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"}
 )
 
-type request struct {
+type Request struct {
 	Method    string            `json:"method"`
 	Url       string            `json:"url"`
 	Body      string            `json:"body"`
@@ -38,7 +38,7 @@ type request struct {
 	Headers   map[string]string `json:"headers"`
 }
 
-func (r *request) httpRequest() (*http.Request, error) {
+func (r *Request) httpRequest() (*http.Request, error) {
 	req, err := http.NewRequest(r.Method, r.Url, bytes.NewReader([]byte(r.Body)))
 
 	if err != nil {
@@ -56,8 +56,8 @@ func (r *request) httpRequest() (*http.Request, error) {
 	return req, nil
 }
 
-func unmarshalRequest(jsonRequest []byte) (*request, error) {
-	req := &request{}
+func unmarshalRequest(jsonRequest []byte) (*Request, error) {
+	req := &Request{}
 	err := json.Unmarshal(jsonRequest, &req)
 
 	if err != nil {
