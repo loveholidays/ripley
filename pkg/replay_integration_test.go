@@ -20,7 +20,6 @@ package ripley
 
 import (
 	"bytes"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,7 +37,7 @@ func TestReplayRaceConditionTermination(t *testing.T) {
 		// Add small delay to increase race condition likelihood
 		time.Sleep(10 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 	defer server.Close()
 
@@ -66,7 +65,7 @@ func TestReplayRaceConditionTermination(t *testing.T) {
 			// Write test data to pipe in a goroutine
 			go func() {
 				defer w.Close()
-				w.Write([]byte(testRequests))
+				_, _ = w.Write([]byte(testRequests))
 			}()
 
 			// Capture stdout to suppress output during test
@@ -106,7 +105,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 		// Longer delay to ensure requests are still processing when Replay tries to exit
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 	defer server.Close()
 
@@ -134,7 +133,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 			// Write test data
 			go func() {
 				defer w.Close()
-				w.Write([]byte(testRequests))
+				_, _ = w.Write([]byte(testRequests))
 			}()
 
 			// Run with very short phase to trigger early completion attempt
@@ -172,7 +171,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 		delay := time.Duration(10+counter%50) * time.Millisecond
 		time.Sleep(delay)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}))
 	defer server.Close()
 
@@ -197,7 +196,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 
 			go func() {
 				defer w.Close()
-				w.Write([]byte(testRequests))
+				_, _ = w.Write([]byte(testRequests))
 			}()
 
 			// High concurrency settings to maximize race condition potential
@@ -239,16 +238,3 @@ func createTestRequests(serverURL string, count int) string {
 	return buffer.String()
 }
 
-// Helper to capture and discard output during tests
-func discardOutput() func() {
-	originalStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	return func() {
-		w.Close()
-		io.Copy(io.Discard, r)
-		r.Close()
-		os.Stdout = originalStdout
-	}
-}
