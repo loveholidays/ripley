@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
@@ -15,37 +15,37 @@ jobs:
         go-version: [1.22.x]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: ${{ matrix.go-version }}
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
 
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-${{ matrix.go-version }}-
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
 
-    - name: Download dependencies
-      run: go mod download
+      - name: Download dependencies
+        run: go mod download
 
-    - name: Verify dependencies
-      run: go mod verify
+      - name: Verify dependencies
+        run: go mod verify
 
-    - name: Run tests
-      run: go test -v -race ./...
+      - name: Run tests
+        run: go test -v -race ./...
 
-    - name: Test linkerdxripley tool
-      run: |
-        cd tools/linkerdxripley
-        go test -v -race ./...
+      - name: Test linkerdxripley tool
+        run: |
+          cd tools/linkerdxripley
+          go test -v -race ./...
 
   build:
     name: Build
@@ -53,63 +53,72 @@ jobs:
     needs: test
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: 1.22.x
+      - name: Authenticate
+        uses: loveholidays/github-actions/.github/actions/auth-cicd@v1
 
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-1.22.x-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-1.22.x-
+      - name: gcloud Authenticate
+        run: gcloud --quiet auth login --force --cred-file $GOOGLE_APPLICATION_CREDENTIALS
 
-    - name: Build main binary
-      run: go build -v -o ripley main.go
+      - name: docker registry configure europe-docker.pkg.dev for gcloud
+        run: gcloud auth configure-docker europe-docker.pkg.dev
 
-    - name: Build linkerdxripley tool
-      run: |
-        cd tools/linkerdxripley
-        go build -v -o linkerdxripley main.go
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.x
 
-    - name: Test binaries work
-      run: |
-        ./ripley --help
-        ./tools/linkerdxripley/linkerdxripley --help
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-1.22.x-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.22.x-
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: binaries
-        path: |
-          ripley
-          tools/linkerdxripley/linkerdxripley
+      - name: Build main binary
+        run: go build -v -o ripley main.go
+
+      - name: Build linkerdxripley tool
+        run: |
+          cd tools/linkerdxripley
+          go build -v -o linkerdxripley main.go
+
+      - name: Test binaries work
+        run: |
+          ./ripley --help
+          ./tools/linkerdxripley/linkerdxripley --help
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            ripley
+            tools/linkerdxripley/linkerdxripley
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: 1.22.x
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.x
 
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        version: latest
-        args: --timeout=5m
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
 
   docker:
     name: Docker Build
@@ -117,33 +126,33 @@ jobs:
     needs: [test, build]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Download build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: binaries
-        path: .
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: .
 
-    - name: Make binaries executable
-      run: chmod +x ripley tools/linkerdxripley/linkerdxripley
+      - name: Make binaries executable
+        run: chmod +x ripley tools/linkerdxripley/linkerdxripley
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Build Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: |
-          loveholidays/ripley:latest
-          loveholidays/ripley:${{ github.sha }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            loveholidays/ripley:latest
+            loveholidays/ripley:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-    - name: Test Docker image
-      run: |
-        docker run --rm loveholidays/ripley:latest --help
+      - name: Test Docker image
+        run: |
+          docker run --rm loveholidays/ripley:latest --help
