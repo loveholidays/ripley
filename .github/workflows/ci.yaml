@@ -60,11 +60,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: "Authenticate to Google Cloud"
-        uses: "google-github-actions/auth@v2"
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Authenticate
+        uses: loveholidays/github-actions/.github/actions/auth-cicd@v1
 
       - name: "Set up Cloud SDK"
         uses: "google-github-actions/setup-gcloud@v2"
