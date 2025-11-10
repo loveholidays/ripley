@@ -13,7 +13,7 @@ var count int
 func handler(w http.ResponseWriter, r *http.Request) {
 	count++
 	time.Sleep(time.Duration(rand.Intn(250)) * time.Millisecond)
-	w.Write([]byte("hi\n"))
+	_, _ = w.Write([]byte("hi\n"))
 }
 
 func main() {
