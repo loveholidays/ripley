@@ -56,6 +56,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v2"
+        with:
+          version: ">= 363.0.0"
+
       - name: Authenticate
         uses: loveholidays/github-actions/.github/actions/auth-cicd@v1
 
@@ -147,6 +152,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             loveholidays/ripley:latest
             loveholidays/ripley:${{ github.sha }}
