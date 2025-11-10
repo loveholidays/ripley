@@ -60,16 +60,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
       - name: "Set up Cloud SDK"
         uses: "google-github-actions/setup-gcloud@v2"
-        with:
-          version: ">= 363.0.0"
-
-      - name: Authenticate
-        uses: loveholidays/github-actions/.github/actions/auth-cicd@v1
-
-      - name: gcloud Authenticate
-        run: gcloud --quiet auth login --force --cred-file $GOOGLE_APPLICATION_CREDENTIALS
 
       - name: docker registry configure europe-docker.pkg.dev for gcloud
         run: gcloud auth configure-docker europe-docker.pkg.dev
@@ -158,11 +156,11 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            loveholidays/ripley:latest
-            loveholidays/ripley:${{ github.sha }}
+            europe-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/ripley/ripley:latest
+            europe-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/ripley/ripley:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Test Docker image
         run: |
-          docker run --rm loveholidays/ripley:latest --help
+          docker run --rm europe-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/ripley/ripley:latest --help
