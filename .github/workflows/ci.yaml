@@ -156,11 +156,11 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            europe-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/ripley/ripley:latest
-            europe-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/ripley/ripley:${{ github.sha }}
+            eu.gcr.io/loveholidays-ci-cd/ripley:latest
+            eu.gcr.io/loveholidays-ci-cd/ripley:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Test Docker image
         run: |
-          docker run --rm europe-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/ripley/ripley:latest --help
+          docker run --rm eu.gcr.io/loveholidays-ci-cd/ripley:latest --help
