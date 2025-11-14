@@ -4,10 +4,8 @@ RUN apk add ca-certificates
 
 WORKDIR /app/
 
-
 COPY . /app/
 
 RUN go build -v -o ripley main.go
 
-COPY ripley /usr/bin/ripley
-ENTRYPOINT ["/usr/bin/ripley"]
+ENTRYPOINT ["/app/ripley"]
