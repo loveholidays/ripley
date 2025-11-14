@@ -60,8 +60,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Authenticate
-        uses: loveholidays/github-actions/.github/actions/auth-cicd@v1
+      - name: Authenticate to Google Cloud
+        id: gcp-auth
+        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2.1.8
+        with:
+          token_format: access_token
+          service_account: gcr-sa-cicd@loveholidays-ci-cd.iam.gserviceaccount.com
+          workload_identity_provider: projects/829253466767/locations/global/workloadIdentityPools/github-actions-idp/providers/github-actions-idp
+
+      - name: Login to GCR
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: eu.gcr.io
+          username: oauth2accesstoken
+          password: ${{ steps.gcp-auth.outputs.access_token }}
 
       - name: "Set up Cloud SDK"
         uses: "google-github-actions/setup-gcloud@v2"
