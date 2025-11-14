@@ -30,9 +30,6 @@ testdata
 Makefile
 scripts
 
-# Compiled binaries (already built)
-ripley
-
 # Misc
 *.log
 tmp
