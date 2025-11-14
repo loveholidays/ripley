@@ -2,6 +2,11 @@
 FROM golang:1.23-alpine
 RUN apk add ca-certificates
 
+WORKDIR /app/
+
+
+COPY . /app/
+
 RUN go build -v -o ripley main.go
 
 COPY ripley /usr/bin/ripley

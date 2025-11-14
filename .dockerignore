@@ -1,0 +1,39 @@
+# Documentation
+*.md
+README.md
+CLAUDE.md
+LICENSE
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+
+# Test data and test files
+*_test.go
+testdata
+
+# Development scripts
+Makefile
+scripts
+
+# Compiled binaries (already built)
+ripley
+
+# Misc
+*.log
+tmp
+temp
