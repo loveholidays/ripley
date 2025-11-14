@@ -1,11 +1,16 @@
-# Start fresh from a smaller image
-FROM golang:1.23-alpine
-RUN apk add ca-certificates
+# Use a minimal base image since binaries are pre-built
+FROM alpine:latest
+
+# Install ca-certificates for HTTPS connections
+RUN apk add --no-cache ca-certificates
 
 WORKDIR /app/
 
-COPY . /app/
+# Copy pre-built binaries from the build context
+COPY ripley /app/ripley
+COPY tools/linkerdxripley/linkerdxripley /app/linkerdxripley
 
-RUN go build -v -o ripley main.go
+# Ensure binaries are executable
+RUN chmod +x /app/ripley /app/linkerdxripley
 
 ENTRYPOINT ["/app/ripley"]
