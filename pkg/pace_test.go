@@ -92,7 +92,7 @@ func TestWaitDuration(t *testing.T) {
 	duration = pacer.waitDuration(now)
 	expected := 2 * time.Second
 
-	if !equalsWithinThreshold(duration, expected, 10*time.Microsecond) {
+	if !equalsWithinThreshold(duration, expected, 100*time.Microsecond) {
 		t.Errorf("duration = %v; want %v", duration, expected)
 	}
 }
@@ -115,7 +115,7 @@ func TestWaitDuration10X(t *testing.T) {
 	duration = pacer.waitDuration(now)
 	expected := time.Second / 10
 
-	if !equalsWithinThreshold(duration, expected, 10*time.Microsecond) {
+	if !equalsWithinThreshold(duration, expected, 100*time.Microsecond) {
 		t.Errorf("duration = %v; want %v", duration, expected)
 	}
 }

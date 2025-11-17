@@ -37,7 +37,6 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 
 	// Send requests for the HTTP client workers to pick up on this channel
 	requests := make(chan *Request)
-	defer close(requests)
 
 	// HTTP client workers will send their results on this channel
 	results := make(chan *Result)
