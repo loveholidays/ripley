@@ -122,7 +122,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create pipe: %v", err)
 			}
-			defer func() { _ = _ = r.Close() }()
+			defer func() { _ = r.Close() }()
 
 			os.Stdin = r
 
@@ -188,7 +188,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create pipe: %v", err)
 			}
-			defer func() { _ = _ = r.Close() }()
+			defer func() { _ = r.Close() }()
 
 			os.Stdin = r
 			_, captureWriter, _ := os.Pipe()
