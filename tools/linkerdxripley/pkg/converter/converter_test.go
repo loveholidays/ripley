@@ -13,7 +13,7 @@ func TestConverter_ConvertToRipley(t *testing.T) {
 	t.Run("successful conversions", func(t *testing.T) {
 		testSuccessfulConversions(t)
 	})
-	
+
 	t.Run("error cases", func(t *testing.T) {
 		testConversionErrors(t)
 	})
@@ -23,7 +23,7 @@ func testSuccessfulConversions(t *testing.T) {
 	t.Run("basic conversion tests", func(t *testing.T) {
 		testBasicConversions(t)
 	})
-	
+
 	t.Run("HTTPS upgrade tests", func(t *testing.T) {
 		testHTTPSUpgradeConversions(t)
 	})
@@ -34,7 +34,7 @@ func testBasicConversions(t *testing.T) {
 
 	tests := []conversionTest{
 		{
-			name: "basic conversion without host change",
+			name:       "basic conversion without host change",
 			linkerdReq: createFullLinkerdRequest(),
 			newHost:    "",
 			expected: &ripley.Request{
@@ -47,9 +47,9 @@ func testBasicConversions(t *testing.T) {
 			},
 		},
 		{
-			name:    "conversion with host change",
+			name:       "conversion with host change",
 			linkerdReq: createSimpleLinkerdRequest("POST", "api.test.com", "http://api.test.com/endpoint", "TestAgent/1.0"),
-			newHost: "localhost:8080",
+			newHost:    "localhost:8080",
 			expected: &ripley.Request{
 				Method:    "POST",
 				Url:       "http://localhost:8080/endpoint",
@@ -60,9 +60,9 @@ func testBasicConversions(t *testing.T) {
 			},
 		},
 		{
-			name:    "conversion without user agent",
+			name:       "conversion without user agent",
 			linkerdReq: createSimpleLinkerdRequest("GET", "api.test.com", "http://api.test.com/endpoint", ""),
-			newHost: "",
+			newHost:    "",
 			expected: &ripley.Request{
 				Method:    "GET",
 				Url:       "http://api.test.com/endpoint",
@@ -71,9 +71,9 @@ func testBasicConversions(t *testing.T) {
 			},
 		},
 		{
-			name:    "conversion with complex query parameters",
+			name:       "conversion with complex query parameters",
 			linkerdReq: createSimpleLinkerdRequest("GET", "search-api.test.com", "http://search-api.test.com/search?q=test&category=books&page=1&limit=10&sort=price", "TestBrowser/2.0"),
-			newHost: "staging.search-api.test.com:9000",
+			newHost:    "staging.search-api.test.com:9000",
 			expected: &ripley.Request{
 				Method:    "GET",
 				Url:       "http://staging.search-api.test.com:9000/search?q=test&category=books&page=1&limit=10&sort=price",
