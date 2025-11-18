@@ -191,7 +191,11 @@ func TestPrometheusRecorder_RecordRequestWithError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get metrics: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("Failed to close response body: %v", err)
+		}
+	}()
 
 	body, _ := io.ReadAll(resp.Body)
 	metrics := string(body)
@@ -231,7 +235,11 @@ func TestPrometheusRecorder_StartMonitoring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get metrics: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("Failed to close response body: %v", err)
+		}
+	}()
 
 	body, _ := io.ReadAll(resp.Body)
 	metrics := string(body)
@@ -323,7 +331,11 @@ func TestSetWorkerPoolSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get metrics: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("Failed to close response body: %v", err)
+		}
+	}()
 
 	body, _ := io.ReadAll(resp.Body)
 	metrics := string(body)
@@ -425,7 +437,11 @@ func TestMetricsRecorder_MultipleRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get metrics: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("Failed to close response body: %v", err)
+		}
+	}()
 
 	body, _ := io.ReadAll(resp.Body)
 	metrics := string(body)
