@@ -21,6 +21,7 @@ package ripley
 import (
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,22 +30,24 @@ import (
 
 var (
 	// Request duration histogram
+	// Note: Uses host (not full URL) to prevent high cardinality issues
 	requestDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ripley_request_duration_seconds",
-			Help:    "HTTP request latencies in seconds",
+			Help:    "HTTP request latencies in seconds by target host",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"url"},
+		[]string{"host"},
 	)
 
 	// Response status code counter
+	// Note: Uses host (not full URL) to prevent high cardinality issues
 	responseStatus = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "ripley_response_status_total",
-			Help: "Total number of HTTP responses by status code",
+			Help: "Total number of HTTP responses by status code and target host",
 		},
-		[]string{"status_code", "url"},
+		[]string{"status_code", "host"},
 	)
 
 	// Total requests counter
@@ -56,12 +59,13 @@ var (
 	)
 
 	// Errors counter
+	// Note: Uses host (not full URL) to prevent high cardinality issues
 	errorsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "ripley_errors_total",
-			Help: "Total number of errors",
+			Help: "Total number of errors by target host",
 		},
-		[]string{"url"},
+		[]string{"host"},
 	)
 
 	// Pacer phase gauge
@@ -195,15 +199,28 @@ func StartMetricsServer(config MetricsConfig) <-chan error {
 	return errChan
 }
 
+// extractHost extracts the host from a URL to prevent high cardinality issues.
+// Falls back to "unknown" if parsing fails or host is empty.
+func extractHost(urlStr string) string {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil || parsedURL.Host == "" {
+		// If parsing fails or host is empty, return a safe default
+		return "unknown"
+	}
+	return parsedURL.Host
+}
+
 // RecordRequest records metrics for a completed HTTP request
+// Note: Uses host extraction to prevent Prometheus cardinality issues with dynamic URL segments
 func RecordRequest(result *Result) {
 	requestsTotal.Inc()
+	host := extractHost(result.Request.Url)
 
 	if result.ErrorMsg != "" {
-		errorsTotal.WithLabelValues(result.Request.Url).Inc()
+		errorsTotal.WithLabelValues(host).Inc()
 	} else {
-		requestDuration.WithLabelValues(result.Request.Url).Observe(result.Latency.Seconds())
-		responseStatus.WithLabelValues(http.StatusText(result.StatusCode), result.Request.Url).Inc()
+		requestDuration.WithLabelValues(host).Observe(result.Latency.Seconds())
+		responseStatus.WithLabelValues(http.StatusText(result.StatusCode), host).Inc()
 	}
 }
 

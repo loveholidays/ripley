@@ -146,6 +146,11 @@ func TestPrometheusRecorder_RecordRequest(t *testing.T) {
 	if !strings.Contains(metrics, "ripley_response_status_total") {
 		t.Error("ripley_response_status_total metric not found")
 	}
+
+	// Verify host label is used (not full URL)
+	if !strings.Contains(metrics, `host="test.example.com"`) {
+		t.Error("Expected host label with value 'test.example.com'")
+	}
 }
 
 func TestPrometheusRecorder_RecordRequestWithError(t *testing.T) {
@@ -314,6 +319,54 @@ func TestSetWorkerPoolSize(t *testing.T) {
 	// Check that worker pool size is set
 	if !strings.Contains(metrics, "ripley_worker_pool_size 42") {
 		t.Error("Worker pool size not correctly set in metrics")
+	}
+}
+
+func TestExtractHost(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		expected string
+	}{
+		{
+			name:     "simple http URL",
+			url:      "http://example.com/path",
+			expected: "example.com",
+		},
+		{
+			name:     "https with port",
+			url:      "https://example.com:8080/api/v1/users",
+			expected: "example.com:8080",
+		},
+		{
+			name:     "with query params and path",
+			url:      "http://api.example.com/users/123?token=abc&id=456",
+			expected: "api.example.com",
+		},
+		{
+			name:     "localhost with port",
+			url:      "http://localhost:8080/test",
+			expected: "localhost:8080",
+		},
+		{
+			name:     "IP address",
+			url:      "http://192.168.1.1:9090/metrics",
+			expected: "192.168.1.1:9090",
+		},
+		{
+			name:     "invalid URL",
+			url:      "not a valid url",
+			expected: "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractHost(tt.url)
+			if result != tt.expected {
+				t.Errorf("extractHost(%q) = %q, want %q", tt.url, result, tt.expected)
+			}
+		})
 	}
 }
 
