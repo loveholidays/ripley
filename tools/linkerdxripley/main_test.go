@@ -12,11 +12,11 @@ func TestCLIIntegration(t *testing.T) {
 	t.Run("basic conversion without host change", func(t *testing.T) {
 		testBasicConversion(t)
 	})
-	
+
 	t.Run("conversion with host change", func(t *testing.T) {
 		testHostChangeConversion(t)
 	})
-	
+
 	t.Run("multiple lines processing", func(t *testing.T) {
 		testMultipleLineProcessing(t)
 	})
@@ -25,7 +25,7 @@ func TestCLIIntegration(t *testing.T) {
 func testBasicConversion(t *testing.T) {
 	linkerdData := getSampleLinkerdData()[0]
 	output := runCLICommand(t, []string{}, linkerdData)
-	
+
 	result := parseJSONOutput(t, output)
 	assertFieldEquals(t, result, "method", "GET")
 	assertFieldEquals(t, result, "url", "http://api-service.test.svc.cluster.local/api/v1/data?id=12345")
@@ -35,7 +35,7 @@ func testBasicConversion(t *testing.T) {
 func testHostChangeConversion(t *testing.T) {
 	linkerdData := getSampleLinkerdData()[0]
 	output := runCLICommand(t, []string{"-host", "localhost:8080"}, linkerdData)
-	
+
 	result := parseJSONOutput(t, output)
 	assertFieldEquals(t, result, "url", "http://localhost:8080/api/v1/data?id=12345")
 }
@@ -44,7 +44,7 @@ func testMultipleLineProcessing(t *testing.T) {
 	linkerdLines := getSampleLinkerdData()
 	linkerdData := strings.Join(linkerdLines, "\n")
 	output := runCLICommand(t, []string{"-host", "staging.test.com:9000"}, linkerdData)
-	
+
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 output lines, got %d", len(lines))

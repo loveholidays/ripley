@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh run list:*)",
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(for i in {1..10})",
+      "Bash(do echo \"Run $i:\")",
+      "Bash(done)",
+      "Bash(docker run:*)",
+      "Bash(docker images:*)",
+      "Bash(git log:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(go get:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go run:*)",
+      "Bash(curl:*)",
+      "Bash(cat:*)",
+      "Bash(./ripley:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

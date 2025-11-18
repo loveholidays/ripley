@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [1.22.x]
+        go-version: [1.23.x]
 
     steps:
       - name: Checkout code
@@ -84,7 +84,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.22.x
+          go-version: 1.23.x
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -92,9 +92,9 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-1.22.x-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-1.23.x-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-1.22.x-
+            ${{ runner.os }}-go-1.23.x-
 
       - name: Build main binary
         run: go build -v -o ripley main.go
@@ -128,7 +128,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.22.x
+          go-version: 1.23.x
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6

@@ -55,31 +55,35 @@ func doHttpRequest(client *http.Client, requests <-chan *Request, results chan<-
 		if dryRun {
 			sendResult(req, &http.Response{}, latencyStart, "", results)
 		} else {
-			httpReq, err := req.httpRequest()
-
-			if err != nil {
-				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-				return
-			}
-
-			resp, err := client.Do(httpReq)
-
-			if err != nil {
-				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-				return
-			}
-
-			_, err = io.ReadAll(resp.Body)
-			resp.Body.Close()
-
-			if err != nil {
-				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-				return
-			}
-
-			sendResult(req, resp, latencyStart, "", results)
+			executeRequest(client, req, latencyStart, results)
 		}
 	}
+}
+
+func executeRequest(client *http.Client, req *Request, latencyStart time.Time, results chan<- *Result) {
+	httpReq, err := req.httpRequest()
+	if err != nil {
+		sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+		return
+	}
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+		return
+	}
+
+	_, err = io.ReadAll(resp.Body)
+	if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+
+	if err != nil {
+		sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
+		return
+	}
+
+	sendResult(req, resp, latencyStart, "", results)
 }
 
 func sendResult(req *Request, resp *http.Response, latencyStart time.Time, err string, results chan<- *Result) {

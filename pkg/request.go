@@ -66,15 +66,15 @@ func unmarshalRequest(jsonRequest []byte) (*Request, error) {
 
 	// Validate
 	if !validMethod(req.Method) {
-		return req, fmt.Errorf("Invalid method: %s", req.Method)
+		return req, fmt.Errorf("invalid method: %s", req.Method)
 	}
 
 	if req.Url == "" {
-		return req, fmt.Errorf("Missing required key: url")
+		return req, fmt.Errorf("missing required key: url")
 	}
 
 	if req.Timestamp.IsZero() {
-		return req, fmt.Errorf("Missing required key: timestamp")
+		return req, fmt.Errorf("missing required key: timestamp")
 	}
 
 	return req, nil

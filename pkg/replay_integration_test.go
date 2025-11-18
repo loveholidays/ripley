@@ -64,7 +64,7 @@ func TestReplayRaceConditionTermination(t *testing.T) {
 
 			// Write test data to pipe in a goroutine
 			go func() {
-				defer w.Close()
+				defer func() { _ = w.Close() }()
 				_, _ = w.Write([]byte(testRequests))
 			}()
 
@@ -75,15 +75,15 @@ func TestReplayRaceConditionTermination(t *testing.T) {
 
 			// Run the replay function with a short phase duration to complete quickly
 			// Use high worker count and connections to increase goroutine concurrency
-			exitCode := Replay("100ms@10", true, false, 1, false, 20, 100, 0, 0)
+			exitCode := Replay("100ms@10", true, false, 1, false, 20, 100, 0, 0, false, "")
 
 			// Restore stdout
 			os.Stdout = originalStdout
-			captureWriter.Close()
+			_ = captureWriter.Close()
 
 			// Restore stdin
 			os.Stdin = originalStdin
-			r.Close()
+			_ = r.Close()
 
 			// Verify that the function completed successfully
 			if exitCode != 0 {
@@ -122,7 +122,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create pipe: %v", err)
 			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 
 			os.Stdin = r
 
@@ -132,19 +132,19 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 
 			// Write test data
 			go func() {
-				defer w.Close()
+				defer func() { _ = w.Close() }()
 				_, _ = w.Write([]byte(testRequests))
 			}()
 
 			// Run with very short phase to trigger early completion attempt
 			start := time.Now()
-			exitCode := Replay("50ms@5", true, false, 1, false, 10, 50, 0, 0)
+			exitCode := Replay("50ms@5", true, false, 1, false, 10, 50, 0, 0, false, "")
 			duration := time.Since(start)
 
 			// Restore streams
 			os.Stdout = originalStdout
 			os.Stdin = originalStdin
-			captureWriter.Close()
+			_ = captureWriter.Close()
 
 			if exitCode != 0 {
 				t.Errorf("Expected exit code 0, got %d", exitCode)
@@ -177,7 +177,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 
 	// Generate many requests
 	testRequests := createTestRequests(server.URL, 200)
-	
+
 	originalStdin := os.Stdin
 	originalStdout := os.Stdout
 
@@ -188,25 +188,25 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create pipe: %v", err)
 			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 
 			os.Stdin = r
 			_, captureWriter, _ := os.Pipe()
 			os.Stdout = captureWriter
 
 			go func() {
-				defer w.Close()
+				defer func() { _ = w.Close() }()
 				_, _ = w.Write([]byte(testRequests))
 			}()
 
 			// High concurrency settings to maximize race condition potential
 			start := time.Now()
-			exitCode := Replay("200ms@20", true, false, 2, false, 50, 200, 0, 0)
+			exitCode := Replay("200ms@20", true, false, 2, false, 50, 200, 0, 0, false, "")
 			duration := time.Since(start)
 
 			os.Stdout = originalStdout
 			os.Stdin = originalStdin
-			captureWriter.Close()
+			_ = captureWriter.Close()
 
 			if exitCode != 0 {
 				t.Errorf("Expected exit code 0, got %d", exitCode)
@@ -224,7 +224,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 func createTestRequests(serverURL string, count int) string {
 	var buffer bytes.Buffer
 	baseTime := time.Now()
-	
+
 	for i := 0; i < count; i++ {
 		timestamp := baseTime.Add(time.Duration(i) * 100 * time.Millisecond)
 		buffer.WriteString(`{"url": "`)
@@ -234,7 +234,6 @@ func createTestRequests(serverURL string, count int) string {
 		buffer.WriteString(`"}`)
 		buffer.WriteString("\n")
 	}
-	
+
 	return buffer.String()
 }
-
