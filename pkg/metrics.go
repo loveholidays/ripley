@@ -121,7 +121,15 @@ type noopRecorder struct{}
 // NewMetricsRecorder creates a metrics recorder based on configuration
 func NewMetricsRecorder(config MetricsConfig, numWorkers int) MetricsRecorder {
 	if config.Enabled {
-		StartMetricsServer(config)
+		errChan := StartMetricsServer(config)
+
+		// Monitor for server errors in background
+		go func() {
+			if err := <-errChan; err != nil {
+				log.Printf("WARNING: Metrics server unavailable, continuing without metrics: %v", err)
+			}
+		}()
+
 		SetWorkerPoolSize(numWorkers)
 		return &prometheusRecorder{stopMonitoring: make(chan bool)}
 	}
@@ -158,19 +166,33 @@ func init() {
 }
 
 // StartMetricsServer starts the Prometheus metrics HTTP server
-func StartMetricsServer(config MetricsConfig) {
+// Returns an error channel that will receive any server startup or runtime errors
+func StartMetricsServer(config MetricsConfig) <-chan error {
+	errChan := make(chan error, 1)
+
 	if !config.Enabled {
-		return
+		close(errChan)
+		return errChan
 	}
 
-	http.Handle("/metrics", promhttp.Handler())
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+
+	server := &http.Server{
+		Addr:    config.Address,
+		Handler: mux,
+	}
 
 	go func() {
 		log.Printf("Starting metrics server on %s", config.Address)
-		if err := http.ListenAndServe(config.Address, nil); err != nil {
-			log.Printf("Metrics server error: %v", err)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("Metrics server failed: %v", err)
+			errChan <- err
 		}
+		close(errChan)
 	}()
+
+	return errChan
 }
 
 // RecordRequest records metrics for a completed HTTP request
