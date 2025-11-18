@@ -104,6 +104,47 @@ type MetricsConfig struct {
 	Address string
 }
 
+// MetricsRecorder interface for recording metrics
+type MetricsRecorder interface {
+	RecordRequest(result *Result)
+	StartMonitoring(requests chan *Request, results chan *Result) func()
+}
+
+// prometheusRecorder implements MetricsRecorder with actual Prometheus metrics
+type prometheusRecorder struct {
+	stopMonitoring chan bool
+}
+
+// noopRecorder implements MetricsRecorder with no-op implementations
+type noopRecorder struct{}
+
+// NewMetricsRecorder creates a metrics recorder based on configuration
+func NewMetricsRecorder(config MetricsConfig, numWorkers int) MetricsRecorder {
+	if config.Enabled {
+		StartMetricsServer(config)
+		SetWorkerPoolSize(numWorkers)
+		return &prometheusRecorder{stopMonitoring: make(chan bool)}
+	}
+	return &noopRecorder{}
+}
+
+func (p *prometheusRecorder) RecordRequest(result *Result) {
+	RecordRequest(result)
+}
+
+func (p *prometheusRecorder) StartMonitoring(requests chan *Request, results chan *Result) func() {
+	go MonitorQueueSizes(requests, results, p.stopMonitoring)
+	return func() {
+		p.stopMonitoring <- true
+	}
+}
+
+func (n *noopRecorder) RecordRequest(result *Result) {}
+
+func (n *noopRecorder) StartMonitoring(requests chan *Request, results chan *Result) func() {
+	return func() {} // Return no-op cleanup function
+}
+
 func init() {
 	// Register metrics with Prometheus's default registry
 	prometheus.MustRegister(requestDuration)

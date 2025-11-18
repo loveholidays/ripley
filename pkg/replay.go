@@ -41,19 +41,13 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	// HTTP client workers will send their results on this channel
 	results := make(chan *Result)
 
-	// Start metrics server if enabled
-	metricsConfig := MetricsConfig{
+	// Initialize metrics recorder (no-op if disabled)
+	metricsRecorder := NewMetricsRecorder(MetricsConfig{
 		Enabled: metricsServerEnable,
 		Address: metricsServerAddr,
-	}
-	StartMetricsServer(metricsConfig)
-	SetWorkerPoolSize(numWorkers)
-
-	// Channel to signal queue monitoring to stop
-	monitorDone := make(chan bool)
-	if metricsServerEnable {
-		go MonitorQueueSizes(requests, results, monitorDone)
-	}
+	}, numWorkers)
+	stopMonitoring := metricsRecorder.StartMonitoring(requests, results)
+	defer stopMonitoring()
 
 	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
@@ -82,10 +76,7 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 				return
 			}
 
-			// Record metrics if enabled
-			if metricsServerEnable {
-				RecordRequest(result)
-			}
+			metricsRecorder.RecordRequest(result)
 
 			if !silent {
 				jsonResult, err := json.Marshal(result)
@@ -143,11 +134,6 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	
 	// Wait for result handler to finish processing all results
 	resultHandlerWG.Wait()
-
-	// Stop queue monitoring if enabled
-	if metricsServerEnable {
-		monitorDone <- true
-	}
 
 	return exitCode
 }
