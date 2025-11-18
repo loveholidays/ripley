@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, printStatsInterval time.Duration) int {
+func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, printStatsInterval time.Duration, metricsServerEnable bool, metricsServerAddr string) int {
 	// Default exit code
 	var exitCode int = 0
 	// Ensures we have handled all HTTP Request results before exiting
@@ -40,6 +40,20 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 
 	// HTTP client workers will send their results on this channel
 	results := make(chan *Result)
+
+	// Start metrics server if enabled
+	metricsConfig := MetricsConfig{
+		Enabled: metricsServerEnable,
+		Address: metricsServerAddr,
+	}
+	StartMetricsServer(metricsConfig)
+	SetWorkerPoolSize(numWorkers)
+
+	// Channel to signal queue monitoring to stop
+	monitorDone := make(chan bool)
+	if metricsServerEnable {
+		go MonitorQueueSizes(requests, results, monitorDone)
+	}
 
 	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
@@ -66,6 +80,11 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 			// If there's a panic elsewhere, this channel can return nil
 			if result == nil {
 				return
+			}
+
+			// Record metrics if enabled
+			if metricsServerEnable {
+				RecordRequest(result)
 			}
 
 			if !silent {
@@ -124,6 +143,11 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	
 	// Wait for result handler to finish processing all results
 	resultHandlerWG.Wait()
+
+	// Stop queue monitoring if enabled
+	if metricsServerEnable {
+		monitorDone <- true
+	}
 
 	return exitCode
 }

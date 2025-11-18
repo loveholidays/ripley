@@ -75,7 +75,7 @@ func TestReplayRaceConditionTermination(t *testing.T) {
 
 			// Run the replay function with a short phase duration to complete quickly
 			// Use high worker count and connections to increase goroutine concurrency
-			exitCode := Replay("100ms@10", true, false, 1, false, 20, 100, 0, 0)
+			exitCode := Replay("100ms@10", true, false, 1, false, 20, 100, 0, 0, false, "")
 
 			// Restore stdout
 			os.Stdout = originalStdout
@@ -138,7 +138,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 
 			// Run with very short phase to trigger early completion attempt
 			start := time.Now()
-			exitCode := Replay("50ms@5", true, false, 1, false, 10, 50, 0, 0)
+			exitCode := Replay("50ms@5", true, false, 1, false, 10, 50, 0, 0, false, "")
 			duration := time.Since(start)
 
 			// Restore streams
@@ -201,7 +201,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 
 			// High concurrency settings to maximize race condition potential
 			start := time.Now()
-			exitCode := Replay("200ms@20", true, false, 2, false, 50, 200, 0, 0)
+			exitCode := Replay("200ms@20", true, false, 2, false, 50, 200, 0, 0, false, "")
 			duration := time.Since(start)
 
 			os.Stdout = originalStdout

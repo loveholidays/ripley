@@ -40,6 +40,8 @@ func main() {
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to `file` before exit")
 	numWorkers := flag.Int("workers", runtime.NumCPU()*2, "Number of client workers to use")
+	metricsServerEnable := flag.Bool("metricsServerEnable", false, "Enable Prometheus metrics server on /metrics endpoint")
+	metricsServerAddr := flag.String("metricsServerAddr", "0.0.0.0:8081", "Metrics server listen address")
 	printStatsInterval := flag.Duration("print-stats", 0, `Statistics report interval, e.g., "1m"
 
 Each report line is printed to stderr with the following fields in logfmt format:
@@ -85,7 +87,7 @@ When 0 (default) or negative, reporting is switched off.
 		defer pprof.StopCPUProfile()
 	}
 
-	exitCode = ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections, *printStatsInterval)
+	exitCode = ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections, *printStatsInterval, *metricsServerEnable, *metricsServerAddr)
 
 	if *memprofile != "" {
 		f, err := os.Create(*memprofile)
