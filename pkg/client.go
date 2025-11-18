@@ -70,7 +70,9 @@ func doHttpRequest(client *http.Client, requests <-chan *Request, results chan<-
 			}
 
 			_, err = io.ReadAll(resp.Body)
-			resp.Body.Close()
+			if closeErr := resp.Body.Close(); closeErr != nil && err == nil {
+				err = closeErr
+			}
 
 			if err != nil {
 				sendResult(req, &http.Response{}, latencyStart, err.Error(), results)

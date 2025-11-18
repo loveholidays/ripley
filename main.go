@@ -78,7 +78,11 @@ When 0 (default) or negative, reporting is switched off.
 			panic(err)
 		}
 
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				panic(err)
+			}
+		}()
 
 		if err := pprof.StartCPUProfile(f); err != nil {
 			panic(err)
@@ -96,7 +100,11 @@ When 0 (default) or negative, reporting is switched off.
 			panic(err)
 		}
 
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				panic(err)
+			}
+		}()
 		runtime.GC()
 
 		if err := pprof.WriteHeapProfile(f); err != nil {

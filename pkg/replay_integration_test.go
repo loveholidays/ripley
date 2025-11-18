@@ -64,7 +64,7 @@ func TestReplayRaceConditionTermination(t *testing.T) {
 
 			// Write test data to pipe in a goroutine
 			go func() {
-				defer w.Close()
+				defer func() { _ = w.Close() }()
 				_, _ = w.Write([]byte(testRequests))
 			}()
 
@@ -79,11 +79,11 @@ func TestReplayRaceConditionTermination(t *testing.T) {
 
 			// Restore stdout
 			os.Stdout = originalStdout
-			captureWriter.Close()
+			_ = captureWriter.Close()
 
 			// Restore stdin
 			os.Stdin = originalStdin
-			r.Close()
+			_ = r.Close()
 
 			// Verify that the function completed successfully
 			if exitCode != 0 {
@@ -122,7 +122,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create pipe: %v", err)
 			}
-			defer r.Close()
+			defer func() { _ = _ = r.Close() }()
 
 			os.Stdin = r
 
@@ -132,7 +132,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 
 			// Write test data
 			go func() {
-				defer w.Close()
+				defer func() { _ = w.Close() }()
 				_, _ = w.Write([]byte(testRequests))
 			}()
 
@@ -144,7 +144,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 			// Restore streams
 			os.Stdout = originalStdout
 			os.Stdin = originalStdin
-			captureWriter.Close()
+			_ = captureWriter.Close()
 
 			if exitCode != 0 {
 				t.Errorf("Expected exit code 0, got %d", exitCode)
@@ -188,14 +188,14 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create pipe: %v", err)
 			}
-			defer r.Close()
+			defer func() { _ = _ = r.Close() }()
 
 			os.Stdin = r
 			_, captureWriter, _ := os.Pipe()
 			os.Stdout = captureWriter
 
 			go func() {
-				defer w.Close()
+				defer func() { _ = w.Close() }()
 				_, _ = w.Write([]byte(testRequests))
 			}()
 
@@ -206,7 +206,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 
 			os.Stdout = originalStdout
 			os.Stdin = originalStdin
-			captureWriter.Close()
+			_ = captureWriter.Close()
 
 			if exitCode != 0 {
 				t.Errorf("Expected exit code 0, got %d", exitCode)

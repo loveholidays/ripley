@@ -129,7 +129,7 @@ func (p *pacer) reportStats(now, expectedWallTime time.Time) {
 	}
 
 	// Get current rate safely
-	var currentRate float64 = 1.0
+	var currentRate = 1.0
 	if len(p.phases) > 0 {
 		currentRate = p.phases[0].rate
 	}

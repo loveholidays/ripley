@@ -59,7 +59,11 @@ func TestNewMetricsRecorder_Enabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to access metrics endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
@@ -129,7 +133,11 @@ func TestPrometheusRecorder_RecordRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get metrics: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("Failed to close response body: %v", err)
+		}
+	}()
 
 	body, _ := io.ReadAll(resp.Body)
 	metrics := string(body)
@@ -266,8 +274,12 @@ func TestStartMetricsServer_Disabled(t *testing.T) {
 func TestStartMetricsServer_PortInUse(t *testing.T) {
 	// Start a server on the test port
 	testServer := &http.Server{Addr: "localhost:18085"}
-	go testServer.ListenAndServe()
-	defer testServer.Close()
+	go func() {
+		_ = testServer.ListenAndServe()
+	}()
+	defer func() {
+		_ = testServer.Close()
+	}()
 
 	// Give server time to bind
 	time.Sleep(100 * time.Millisecond)
@@ -387,7 +399,7 @@ func TestMetricsRecorder_MultipleRequests(t *testing.T) {
 		t.Fatalf("Failed to get initial metrics: %v", err)
 	}
 	body1, _ := io.ReadAll(resp1.Body)
-	resp1.Body.Close()
+	_ = resp1.Body.Close()
 
 	initialMetrics := string(body1)
 	initialHasRequests := strings.Contains(initialMetrics, "ripley_requests_total")

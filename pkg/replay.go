@@ -29,7 +29,7 @@ import (
 
 func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, printStatsInterval time.Duration, metricsServerEnable bool, metricsServerAddr string) int {
 	// Default exit code
-	var exitCode int = 0
+	var exitCode = 0
 	// Ensures we have handled all HTTP Request results before exiting
 	var waitGroup sync.WaitGroup
 	// Ensures result handler goroutine completes before closing results channel
