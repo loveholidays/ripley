@@ -177,7 +177,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 
 	// Generate many requests
 	testRequests := createTestRequests(server.URL, 200)
-	
+
 	originalStdin := os.Stdin
 	originalStdout := os.Stdout
 
@@ -224,7 +224,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 func createTestRequests(serverURL string, count int) string {
 	var buffer bytes.Buffer
 	baseTime := time.Now()
-	
+
 	for i := 0; i < count; i++ {
 		timestamp := baseTime.Add(time.Duration(i) * 100 * time.Millisecond)
 		buffer.WriteString(`{"url": "`)
@@ -234,7 +234,6 @@ func createTestRequests(serverURL string, count int) string {
 		buffer.WriteString(`"}`)
 		buffer.WriteString("\n")
 	}
-	
+
 	return buffer.String()
 }
-

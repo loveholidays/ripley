@@ -125,13 +125,13 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 
 	// Close requests channel to signal worker goroutines to stop
 	close(requests)
-	
+
 	// Wait for all HTTP requests to complete
 	waitGroup.Wait()
-	
+
 	// Close results channel to signal result handler to stop
 	close(results)
-	
+
 	// Wait for result handler to finish processing all results
 	resultHandlerWG.Wait()
 

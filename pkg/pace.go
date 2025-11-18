@@ -58,7 +58,7 @@ func newPacer(phasesStr string) (*pacer, error) {
 func (p *pacer) start() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	// Run a timer for the first phase's duration
 	if len(p.phases) > 0 {
 		time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
@@ -71,7 +71,7 @@ func (p *pacer) start() {
 func (p *pacer) onPhaseElapsed() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	// Pop phase
 	if len(p.phases) > 0 {
 		p.phases = p.phases[1:]
@@ -90,7 +90,7 @@ func (p *pacer) onPhaseElapsed() {
 func (p *pacer) waitDuration(t time.Time) time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	now := time.Now()
 
 	if p.lastRequestTime.IsZero() {
@@ -127,13 +127,13 @@ func (p *pacer) reportStats(now, expectedWallTime time.Time) {
 	if p.ReportInterval <= 0 {
 		return
 	}
-	
+
 	// Get current rate safely
 	var currentRate float64 = 1.0
 	if len(p.phases) > 0 {
 		currentRate = p.phases[0].rate
 	}
-	
+
 	for p.nextReport.Before(expectedWallTime) {
 		fmt.Fprintf(os.Stderr, "report_time=%s skew_seconds=%f last_request_time=%s rate=%f expected_rps=%d\n",
 			p.nextReport.Format(time.RFC3339),
