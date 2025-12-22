@@ -1,0 +1,19 @@
+name: Validate System Catalog
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".system-catalog/**/*.yaml"
+      - ".system-catalog/**/*.yml"
+
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  run-validate:
+    uses: loveholidays/github-actions/.github/workflows/system-catalog-validate.yaml@main
+    with:
+      project_id: lh-cloud-infra-ops-production
+      runner: ops-production-arm64-1cpu-2gb
+    secrets: inherit # This passes GITHUB_TOKEN to the reusable workflow
