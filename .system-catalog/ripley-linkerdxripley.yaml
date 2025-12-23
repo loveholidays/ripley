@@ -1,0 +1,14 @@
+system_id: ripley-linkerdxripley
+name: linkerdxripley
+description: CLI tool that converts Linkerd service mesh access logs from JSONL format to Ripley request format for traffic replay
+team: Cloud Infrastructure
+lifecycle: production
+classification_level: Internal
+repository_url: https://github.com/loveholidays/ripley/tree/main/tools/linkerdxripley
+documentation_url: https://github.com/loveholidays/ripley/tree/main/tools/linkerdxripley/README.md
+commission_date: 2025-09-04
+
+apis: []
+
+dependencies: []
+
