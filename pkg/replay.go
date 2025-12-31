@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, printStatsInterval time.Duration, metricsServerEnable bool, metricsServerAddr string) int {
+func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, disableKeepAlive bool, printStatsInterval time.Duration, metricsServerEnable bool, metricsServerAddr string) int {
 	// Default exit code
 	var exitCode = 0
 	// Ensures we have handled all HTTP Request results before exiting
@@ -61,7 +61,7 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	scanner := bufio.NewScanner(bufio.NewReaderSize(os.Stdin, 32*1024*1024))
 
 	// Start HTTP client goroutine pool
-	startClientWorkers(numWorkers, requests, results, dryRun, timeout, connections, maxConnections)
+	startClientWorkers(numWorkers, requests, results, dryRun, timeout, connections, maxConnections, disableKeepAlive)
 	pacer.start()
 
 	// Goroutine to handle the  HTTP client result
