@@ -220,6 +220,52 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 	}
 }
 
+func TestReplayWithDisableKeepAlives(t *testing.T) {
+	// Simple test to verify disable-keepalive flag works end-to-end
+	var requestCount int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	testRequests := createTestRequests(server.URL, 10)
+
+	originalStdin := os.Stdin
+	originalStdout := os.Stdout
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+	defer func() { _ = r.Close() }()
+
+	os.Stdin = r
+	_, captureWriter, _ := os.Pipe()
+	os.Stdout = captureWriter
+
+	go func() {
+		defer func() { _ = w.Close() }()
+		_, _ = w.Write([]byte(testRequests))
+	}()
+
+	// Run with disable-keepalive enabled (use higher rate to complete faster)
+	exitCode := Replay("1s@20", true, false, 1, false, 10, 50, 0, true, 0, false, "")
+
+	os.Stdout = originalStdout
+	os.Stdin = originalStdin
+	_ = captureWriter.Close()
+
+	if exitCode != 0 {
+		t.Errorf("Expected exit code 0, got %d", exitCode)
+	}
+
+	if atomic.LoadInt64(&requestCount) != 10 {
+		t.Errorf("Expected 10 requests, got %d", requestCount)
+	}
+}
+
 // Helper function to create test request data
 func createTestRequests(serverURL string, count int) string {
 	var buffer bytes.Buffer
