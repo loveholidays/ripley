@@ -75,7 +75,7 @@ func TestReplayRaceConditionTermination(t *testing.T) {
 
 			// Run the replay function with a short phase duration to complete quickly
 			// Use high worker count and connections to increase goroutine concurrency
-			exitCode := Replay("100ms@10", true, false, 1, false, 20, 100, 0, 0, false, "")
+			exitCode := Replay("100ms@10", true, false, 1, false, 20, 100, 0, false, 0, false, "")
 
 			// Restore stdout
 			os.Stdout = originalStdout
@@ -138,7 +138,7 @@ func TestReplayRaceConditionWithSlowServer(t *testing.T) {
 
 			// Run with very short phase to trigger early completion attempt
 			start := time.Now()
-			exitCode := Replay("50ms@5", true, false, 1, false, 10, 50, 0, 0, false, "")
+			exitCode := Replay("50ms@5", true, false, 1, false, 10, 50, 0, false, 0, false, "")
 			duration := time.Since(start)
 
 			// Restore streams
@@ -201,7 +201,7 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 
 			// High concurrency settings to maximize race condition potential
 			start := time.Now()
-			exitCode := Replay("200ms@20", true, false, 2, false, 50, 200, 0, 0, false, "")
+			exitCode := Replay("200ms@20", true, false, 2, false, 50, 200, 0, false, 0, false, "")
 			duration := time.Since(start)
 
 			os.Stdout = originalStdout
@@ -217,6 +217,52 @@ func TestReplayRaceConditionStressTest(t *testing.T) {
 				t.Errorf("Replay took too long (%v), possible deadlock", duration)
 			}
 		})
+	}
+}
+
+func TestReplayWithDisableKeepAlives(t *testing.T) {
+	// Simple test to verify disable-keepalive flag works end-to-end
+	var requestCount int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	testRequests := createTestRequests(server.URL, 10)
+
+	originalStdin := os.Stdin
+	originalStdout := os.Stdout
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+	defer func() { _ = r.Close() }()
+
+	os.Stdin = r
+	_, captureWriter, _ := os.Pipe()
+	os.Stdout = captureWriter
+
+	go func() {
+		defer func() { _ = w.Close() }()
+		_, _ = w.Write([]byte(testRequests))
+	}()
+
+	// Run with disable-keepalive enabled (use higher rate to complete faster)
+	exitCode := Replay("1s@20", true, false, 1, false, 10, 50, 0, true, 0, false, "")
+
+	os.Stdout = originalStdout
+	os.Stdin = originalStdin
+	_ = captureWriter.Close()
+
+	if exitCode != 0 {
+		t.Errorf("Expected exit code 0, got %d", exitCode)
+	}
+
+	if atomic.LoadInt64(&requestCount) != 10 {
+		t.Errorf("Expected 10 requests, got %d", requestCount)
 	}
 }
 

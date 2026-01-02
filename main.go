@@ -36,6 +36,7 @@ func main() {
 	timeout := flag.Int("timeout", 10, "HTTP client timeout in seconds")
 	connections := flag.Int("connections", 10000, "Max open idle connections per target host")
 	maxConnections := flag.Int("max-connections", 0, "Max connections per target host (default unlimited)")
+	disableKeepAlives := flag.Bool("disable-keepalives", false, "Disable HTTP keep-alives (forces new connection per request)")
 	strict := flag.Bool("strict", false, "Panic on bad input")
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to `file` before exit")
@@ -91,7 +92,7 @@ When 0 (default) or negative, reporting is switched off.
 		defer pprof.StopCPUProfile()
 	}
 
-	exitCode = ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections, *printStatsInterval, *metricsServerEnable, *metricsServerAddr)
+	exitCode = ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections, *disableKeepAlives, *printStatsInterval, *metricsServerEnable, *metricsServerAddr)
 
 	if *memprofile != "" {
 		f, err := os.Create(*memprofile)
