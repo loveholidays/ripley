@@ -26,95 +26,92 @@ import (
 	"time"
 )
 
-// Helper function to collect and validate results from a channel
-func collectResults(t *testing.T, results chan *Result, expectedCount int) int {
-	t.Helper()
-	successCount := 0
-	receivedCount := 0
-
-	for result := range results {
-		receivedCount++
-
-		if result.StatusCode == 200 && result.ErrorMsg == "" {
-			successCount++
-		}
-
-		if receivedCount == expectedCount {
-			close(results)
-			break
-		}
-	}
-
-	return successCount
-}
-
-// Helper function to send test requests
-func sendTestRequests(requests chan *Request, serverURL string, count int) {
-	baseTime := time.Now()
-	for i := 0; i < count; i++ {
-		req := &Request{
-			Url:       serverURL,
-			Method:    "GET",
-			Timestamp: baseTime.Add(time.Duration(i) * time.Millisecond),
-		}
-		requests <- req
-	}
-	close(requests)
-}
-
-// Helper function to validate request count
-func validateRequestCount(t *testing.T, actual, expected int64) {
-	t.Helper()
-	if actual != expected {
-		t.Errorf("Expected %d requests to server, got %d", expected, actual)
-	}
-}
-
-// Helper function to run a complete client worker test scenario
-func runClientWorkerTest(t *testing.T, numWorkers, numRequests int, disableKeepAlives bool) {
-	t.Helper()
-	var requestCount int64
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt64(&requestCount, 1)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	}))
-	defer server.Close()
-
-	requests := make(chan *Request, numRequests)
-	results := make(chan *Result, numRequests)
-
-	startClientWorkers(numWorkers, requests, results, false, 10, 100, 0, disableKeepAlives)
-	sendTestRequests(requests, server.URL, numRequests)
-
-	successCount := collectResults(t, results, numRequests)
-
-	if successCount != numRequests {
-		t.Errorf("Expected %d successful requests, got %d", numRequests, successCount)
-	}
-
-	validateRequestCount(t, atomic.LoadInt64(&requestCount), int64(numRequests))
-}
-
 func TestStartClientWorkers_DisableKeepAlives(t *testing.T) {
 	tests := []struct {
 		name              string
 		disableKeepAlives bool
+		numRequests       int
+		description       string
 	}{
 		{
 			name:              "KeepAlivesEnabled",
 			disableKeepAlives: false,
+			numRequests:       5,
+			description:       "When keep-alives are enabled, connections should be reused",
 		},
 		{
 			name:              "KeepAlivesDisabled",
 			disableKeepAlives: true,
+			numRequests:       5,
+			description:       "When keep-alives are disabled, connections should not be reused",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runClientWorkerTest(t, 1, 5, tt.disableKeepAlives)
+			var requestCount int64
+			var connectionCount int64
+
+			// Create test server that tracks connection creation
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				atomic.AddInt64(&requestCount, 1)
+
+				// Check if this is a new connection by looking at the Connection header
+				// When keep-alive is disabled, each request will have "close" in Connection header
+				if r.Header.Get("Connection") == "close" || !tt.disableKeepAlives && atomic.LoadInt64(&requestCount) == 1 {
+					atomic.AddInt64(&connectionCount, 1)
+				}
+
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("OK"))
+			}))
+			defer server.Close()
+
+			// Setup channels
+			requests := make(chan *Request, tt.numRequests)
+			results := make(chan *Result, tt.numRequests)
+
+			// Start client workers with the test configuration
+			startClientWorkers(1, requests, results, false, 10, 100, 0, tt.disableKeepAlives)
+
+			// Send test requests
+			baseTime := time.Now()
+			for i := 0; i < tt.numRequests; i++ {
+				req := &Request{
+					Url:       server.URL,
+					Method:    "GET",
+					Timestamp: baseTime.Add(time.Duration(i) * time.Millisecond),
+				}
+				requests <- req
+			}
+			close(requests)
+
+			// Collect results
+			receivedResults := 0
+			for result := range results {
+				receivedResults++
+				if result.StatusCode != 200 {
+					t.Errorf("Expected status code 200, got %d", result.StatusCode)
+				}
+				if result.ErrorMsg != "" {
+					t.Errorf("Unexpected error: %s", result.ErrorMsg)
+				}
+
+				if receivedResults == tt.numRequests {
+					close(results)
+					break
+				}
+			}
+
+			// Verify all requests were processed
+			if receivedResults != tt.numRequests {
+				t.Errorf("Expected %d results, got %d", tt.numRequests, receivedResults)
+			}
+
+			finalRequestCount := atomic.LoadInt64(&requestCount)
+			if finalRequestCount != int64(tt.numRequests) {
+				t.Errorf("Expected %d requests to server, got %d", tt.numRequests, finalRequestCount)
+			}
 		})
 	}
 }
@@ -291,7 +288,57 @@ func TestStartClientWorkers_MultipleWorkers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runClientWorkerTest(t, tt.numWorkers, tt.numRequests, tt.disableKeepAlives)
+			var requestCount int64
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				atomic.AddInt64(&requestCount, 1)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("OK"))
+			}))
+			defer server.Close()
+
+			requests := make(chan *Request, tt.numRequests)
+			results := make(chan *Result, tt.numRequests)
+
+			// Start multiple workers
+			startClientWorkers(tt.numWorkers, requests, results, false, 10, 100, 0, tt.disableKeepAlives)
+
+			// Send requests
+			baseTime := time.Now()
+			for i := 0; i < tt.numRequests; i++ {
+				req := &Request{
+					Url:       server.URL,
+					Method:    "GET",
+					Timestamp: baseTime.Add(time.Duration(i) * time.Millisecond),
+				}
+				requests <- req
+			}
+			close(requests)
+
+			// Collect results
+			receivedResults := 0
+			successCount := 0
+			for result := range results {
+				receivedResults++
+				if result.StatusCode == 200 && result.ErrorMsg == "" {
+					successCount++
+				}
+
+				if receivedResults == tt.numRequests {
+					close(results)
+					break
+				}
+			}
+
+			// Verify all requests were processed successfully
+			if successCount != tt.numRequests {
+				t.Errorf("Expected %d successful requests, got %d", tt.numRequests, successCount)
+			}
+
+			finalRequestCount := atomic.LoadInt64(&requestCount)
+			if finalRequestCount != int64(tt.numRequests) {
+				t.Errorf("Expected %d requests to server, got %d", tt.numRequests, finalRequestCount)
+			}
 		})
 	}
 }
