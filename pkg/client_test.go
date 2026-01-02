@@ -70,48 +70,51 @@ func validateRequestCount(t *testing.T, actual, expected int64) {
 	}
 }
 
+// Helper function to run a complete client worker test scenario
+func runClientWorkerTest(t *testing.T, numWorkers, numRequests int, disableKeepAlives bool) {
+	t.Helper()
+	var requestCount int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&requestCount, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	requests := make(chan *Request, numRequests)
+	results := make(chan *Result, numRequests)
+
+	startClientWorkers(numWorkers, requests, results, false, 10, 100, 0, disableKeepAlives)
+	sendTestRequests(requests, server.URL, numRequests)
+
+	successCount := collectResults(t, results, numRequests)
+
+	if successCount != numRequests {
+		t.Errorf("Expected %d successful requests, got %d", numRequests, successCount)
+	}
+
+	validateRequestCount(t, atomic.LoadInt64(&requestCount), int64(numRequests))
+}
+
 func TestStartClientWorkers_DisableKeepAlives(t *testing.T) {
 	tests := []struct {
 		name              string
 		disableKeepAlives bool
-		numRequests       int
 	}{
 		{
 			name:              "KeepAlivesEnabled",
 			disableKeepAlives: false,
-			numRequests:       5,
 		},
 		{
 			name:              "KeepAlivesDisabled",
 			disableKeepAlives: true,
-			numRequests:       5,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var requestCount int64
-
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				atomic.AddInt64(&requestCount, 1)
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("OK"))
-			}))
-			defer server.Close()
-
-			requests := make(chan *Request, tt.numRequests)
-			results := make(chan *Result, tt.numRequests)
-
-			startClientWorkers(1, requests, results, false, 10, 100, 0, tt.disableKeepAlives)
-			sendTestRequests(requests, server.URL, tt.numRequests)
-
-			successCount := collectResults(t, results, tt.numRequests)
-
-			if successCount != tt.numRequests {
-				t.Errorf("Expected %d successful requests, got %d", tt.numRequests, successCount)
-			}
-
-			validateRequestCount(t, atomic.LoadInt64(&requestCount), int64(tt.numRequests))
+			runClientWorkerTest(t, 1, 5, tt.disableKeepAlives)
 		})
 	}
 }
@@ -288,28 +291,7 @@ func TestStartClientWorkers_MultipleWorkers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var requestCount int64
-
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				atomic.AddInt64(&requestCount, 1)
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("OK"))
-			}))
-			defer server.Close()
-
-			requests := make(chan *Request, tt.numRequests)
-			results := make(chan *Result, tt.numRequests)
-
-			startClientWorkers(tt.numWorkers, requests, results, false, 10, 100, 0, tt.disableKeepAlives)
-			sendTestRequests(requests, server.URL, tt.numRequests)
-
-			successCount := collectResults(t, results, tt.numRequests)
-
-			if successCount != tt.numRequests {
-				t.Errorf("Expected %d successful requests, got %d", tt.numRequests, successCount)
-			}
-
-			validateRequestCount(t, atomic.LoadInt64(&requestCount), int64(tt.numRequests))
+			runClientWorkerTest(t, tt.numWorkers, tt.numRequests, tt.disableKeepAlives)
 		})
 	}
 }
