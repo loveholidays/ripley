@@ -31,7 +31,7 @@ type Result struct {
 	ErrorMsg   string        `json:"error"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *Request, results chan<- *Result, dryRun bool, timeout, connections, maxConnections int, disableKeepAlive bool) {
+func startClientWorkers(numWorkers int, requests <-chan *Request, results chan<- *Result, dryRun bool, timeout, connections, maxConnections int, disableKeepAlives bool) {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -40,7 +40,7 @@ func startClientWorkers(numWorkers int, requests <-chan *Request, results chan<-
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost: connections,
 			MaxConnsPerHost:     maxConnections,
-			DisableKeepAlives:   disableKeepAlive,
+			DisableKeepAlives:   disableKeepAlives,
 		},
 	}
 
