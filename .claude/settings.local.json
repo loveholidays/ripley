@@ -16,7 +16,8 @@
       "Bash(go run:*)",
       "Bash(curl:*)",
       "Bash(cat:*)",
-      "Bash(./ripley:*)"
+      "Bash(./ripley:*)",
+      "Bash(git:*)"
     ],
     "deny": [],
     "ask": []
