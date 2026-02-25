@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Building and Testing
 - **Build**: `go build -o ripley main.go`
-- **Test**: `go test pkg/*.go`
+- **Test**: `go test -race ./...`
+- **Lint**: `golangci-lint run`
 - **Run sample server**: `go run etc/dummyweb.go` (starts HTTP server on :8080)
 
 ### Running Ripley
@@ -14,6 +15,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **With pacing**: `./ripley -pace "10s@1 10s@5 1h@10"`
 - **Dry run**: `./ripley -pace "30s@1" -dry-run`
 - **Silent output**: `./ripley -silent`
+- **Disable keep-alives**: `./ripley -disable-keepalives`
+- **With metrics server**: `./ripley -metricsServerEnable -metricsServerAddr "0.0.0.0:8081"`
+- **With stats reporting**: `./ripley -print-stats "1m"`
 
 ### Tools
 - **Linkerd converter**: `go run tools/linkerdxripley/main.go`
@@ -34,6 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `pkg/request.go`: HTTP request structures and validation
 - `pkg/pace.go`: Rate pacing engine with support for multiple phases
 - `pkg/client.go`: HTTP client worker pool and request execution
+- `pkg/metrics.go`: Prometheus metrics recording and HTTP server (`/metrics` endpoint)
 
 **Data Flow:**
 1. JSONL requests read from STDIN via `bufio.Scanner`
@@ -46,6 +51,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Rate Pacing**: Maintains original traffic patterns while scaling by rate multipliers
 - **Request Format**: JSON with required fields: `url`, `method`, `timestamp`
 - **Worker Pool**: Configurable number of HTTP client workers for concurrent processing
+- **Prometheus Metrics**: Optional metrics server exposing request duration, status codes, error counts, queue sizes, and pacer phase via `/metrics`
 
 ### Tools Architecture
 
@@ -92,7 +98,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Notes
 
-- Go version requirement: 1.22+
+- Go version requirement: 1.23+
 - Strict mode available for development (`-strict` flag causes panic on bad input)
 - Comprehensive validation for HTTP methods and required fields
 - Built-in statistics reporting with configurable intervals
+- CI: GitHub Actions runs test, lint (`golangci-lint`), build, and Docker image steps (`.github/workflows/ci.yaml`)
