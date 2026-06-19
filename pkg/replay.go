@@ -51,11 +51,11 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 
 	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
-	pacer.ReportInterval = printStatsInterval
-
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, "ripley: invalid -pace value:", err)
+		return 1
 	}
+	pacer.ReportInterval = printStatsInterval
 
 	// Read Request JSONL input from STDIN
 	scanner := bufio.NewScanner(bufio.NewReaderSize(os.Stdin, 32*1024*1024))
