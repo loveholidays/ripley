@@ -21,6 +21,7 @@ package ripley
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -276,6 +277,71 @@ func TestStartMetricsServer_Disabled(t *testing.T) {
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Channel should be closed immediately when disabled")
+	}
+}
+
+func TestStartMetricsServer_ProfilingEnabled(t *testing.T) {
+	config := MetricsConfig{
+		Enabled:          true,
+		Address:          "localhost:18088",
+		ProfilingEnabled: true,
+	}
+
+	StartMetricsServer(config)
+	time.Sleep(100 * time.Millisecond)
+
+	resp, err := http.Get("http://localhost:18088/debug/pprof/goroutine?debug=1")
+	if err != nil {
+		t.Fatalf("Failed to access pprof endpoint: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read pprof response: %v", err)
+	}
+	if !strings.Contains(string(body), "goroutine profile") {
+		t.Error("pprof goroutine profile was not returned")
+	}
+}
+
+func TestPushMetrics(t *testing.T) {
+	pushes := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushes <- r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		PushMetrics(MetricsConfig{
+			PushgatewayURL: server.URL,
+			PushgatewayJob: "ripley-test",
+			PushInterval:   time.Hour,
+		}, done)
+		close(finished)
+	}()
+
+	select {
+	case path := <-pushes:
+		if path != "/metrics/job/ripley-test" {
+			t.Errorf("Unexpected Pushgateway path: %s", path)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Expected metrics to be pushed")
+	}
+
+	close(done)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("Expected metrics push loop to stop")
 	}
 }
 

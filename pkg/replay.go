@@ -28,6 +28,13 @@ import (
 )
 
 func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, disableKeepAlives bool, printStatsInterval time.Duration, metricsServerEnable bool, metricsServerAddr string) int {
+	return ReplayWithMetricsConfig(phasesStr, silent, dryRun, timeout, strict, numWorkers, connections, maxConnections, disableKeepAlives, printStatsInterval, MetricsConfig{
+		Enabled: metricsServerEnable,
+		Address: metricsServerAddr,
+	})
+}
+
+func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, disableKeepAlives bool, printStatsInterval time.Duration, metricsConfig MetricsConfig) int {
 	// Default exit code
 	var exitCode = 0
 	// Ensures we have handled all HTTP Request results before exiting
@@ -42,10 +49,7 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, num
 	results := make(chan *Result)
 
 	// Initialize metrics recorder (no-op if disabled)
-	metricsRecorder := NewMetricsRecorder(MetricsConfig{
-		Enabled: metricsServerEnable,
-		Address: metricsServerAddr,
-	}, numWorkers)
+	metricsRecorder := NewMetricsRecorder(metricsConfig, numWorkers)
 	stopMonitoring := metricsRecorder.StartMonitoring(requests, results)
 	defer stopMonitoring()
 

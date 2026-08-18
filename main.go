@@ -23,6 +23,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"time"
 
 	ripley "github.com/loveholidays/ripley/pkg"
 )
@@ -43,6 +44,10 @@ func main() {
 	numWorkers := flag.Int("workers", runtime.NumCPU()*2, "Number of client workers to use")
 	metricsServerEnable := flag.Bool("metricsServerEnable", false, "Enable Prometheus metrics server on /metrics endpoint")
 	metricsServerAddr := flag.String("metricsServerAddr", "0.0.0.0:8081", "Metrics server listen address")
+	pushgatewayURL := flag.String("pushgateway-url", "", "Push Prometheus metrics to this Pushgateway URL")
+	pushgatewayJob := flag.String("pushgateway-job", "ripley", "Pushgateway job name")
+	pushgatewayInterval := flag.Duration("pushgateway-interval", 30*time.Second, "Interval for pushing Prometheus metrics")
+	pprofEnable := flag.Bool("pprof-enable", false, "Enable Go pprof endpoints on the metrics server")
 	printStatsInterval := flag.Duration("print-stats", 0, `Statistics report interval, e.g., "1m"
 
 Each report line is printed to stderr with the following fields in logfmt format:
@@ -92,7 +97,14 @@ When 0 (default) or negative, reporting is switched off.
 		defer pprof.StopCPUProfile()
 	}
 
-	exitCode = ripley.Replay(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections, *disableKeepAlives, *printStatsInterval, *metricsServerEnable, *metricsServerAddr)
+	exitCode = ripley.ReplayWithMetricsConfig(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections, *disableKeepAlives, *printStatsInterval, ripley.MetricsConfig{
+		Enabled:          *metricsServerEnable,
+		Address:          *metricsServerAddr,
+		PushgatewayURL:   *pushgatewayURL,
+		PushgatewayJob:   *pushgatewayJob,
+		PushInterval:     *pushgatewayInterval,
+		ProfilingEnabled: *pprofEnable,
+	})
 
 	if *memprofile != "" {
 		f, err := os.Create(*memprofile)
