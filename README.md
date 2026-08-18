@@ -239,4 +239,9 @@ go test pkg/*.go
 ```
 
 ## Releasing new versions
-Push a new tag to `main` to trigger the GoReleaser process.
+A successful merge to `main` creates a release tag and starts GoReleaser.
+
+- Normal merge: increments the minor version, for example `v0.1.3` to `v0.2.0`.
+- Merge commit message containing `#major`: increments the major version, for example `v0.1.3` to `v1.0.0`.
+
+Do not create release tags manually.
