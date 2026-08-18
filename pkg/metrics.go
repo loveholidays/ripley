@@ -21,11 +21,13 @@ package ripley
 import (
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_golang/prometheus/push"
 )
 
 var (
@@ -104,8 +106,12 @@ var (
 
 // MetricsConfig holds metrics server configuration
 type MetricsConfig struct {
-	Enabled bool
-	Address string
+	Enabled          bool
+	Address          string
+	PushgatewayURL   string
+	PushgatewayJob   string
+	PushInterval     time.Duration
+	ProfilingEnabled bool
 }
 
 // MetricsRecorder interface for recording metrics
@@ -116,7 +122,8 @@ type MetricsRecorder interface {
 
 // prometheusRecorder implements MetricsRecorder with actual Prometheus metrics
 type prometheusRecorder struct {
-	stopMonitoring chan bool
+	config         MetricsConfig
+	stopMonitoring chan struct{}
 }
 
 // noopRecorder implements MetricsRecorder with no-op implementations
@@ -135,7 +142,10 @@ func NewMetricsRecorder(config MetricsConfig, numWorkers int) MetricsRecorder {
 		}()
 
 		SetWorkerPoolSize(numWorkers)
-		return &prometheusRecorder{stopMonitoring: make(chan bool)}
+		return &prometheusRecorder{
+			config:         config,
+			stopMonitoring: make(chan struct{}),
+		}
 	}
 	return &noopRecorder{}
 }
@@ -146,8 +156,11 @@ func (p *prometheusRecorder) RecordRequest(result *Result) {
 
 func (p *prometheusRecorder) StartMonitoring(requests chan *Request, results chan *Result) func() {
 	go MonitorQueueSizes(requests, results, p.stopMonitoring)
+	if p.config.PushgatewayURL != "" {
+		go PushMetrics(p.config, p.stopMonitoring)
+	}
 	return func() {
-		p.stopMonitoring <- true
+		close(p.stopMonitoring)
 	}
 }
 
@@ -181,6 +194,9 @@ func StartMetricsServer(config MetricsConfig) <-chan error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	if config.ProfilingEnabled {
+		registerPprofHandlers(mux)
+	}
 
 	server := &http.Server{
 		Addr:    config.Address,
@@ -197,6 +213,41 @@ func StartMetricsServer(config MetricsConfig) <-chan error {
 	}()
 
 	return errChan
+}
+
+func registerPprofHandlers(mux *http.ServeMux) {
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+}
+
+func PushMetrics(config MetricsConfig, done <-chan struct{}) {
+	interval := config.PushInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	pushMetrics(config)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-done:
+			pushMetrics(config)
+			return
+		case <-ticker.C:
+			pushMetrics(config)
+		}
+	}
+}
+
+func pushMetrics(config MetricsConfig) {
+	if err := push.New(config.PushgatewayURL, config.PushgatewayJob).Gatherer(prometheus.DefaultGatherer).Push(); err != nil {
+		log.Printf("WARNING: Failed to push metrics to Pushgateway: %v", err)
+	}
 }
 
 // extractHost extracts the host from a URL to prevent high cardinality issues.
@@ -235,7 +286,7 @@ func SetPacerPhase(phase string, rate float64) {
 }
 
 // MonitorQueueSizes monitors the request and result queue sizes
-func MonitorQueueSizes(requests chan *Request, results chan *Result, done chan bool) {
+func MonitorQueueSizes(requests chan *Request, results chan *Result, done <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 

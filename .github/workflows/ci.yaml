@@ -60,27 +60,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        id: gcp-auth
-        uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2.1.8
-        with:
-          token_format: access_token
-          service_account: gcr-sa-cicd@loveholidays-ci-cd.iam.gserviceaccount.com
-          workload_identity_provider: projects/829253466767/locations/global/workloadIdentityPools/github-actions-idp/providers/github-actions-idp
-
-      - name: Login to GCR
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
-        with:
-          registry: eu.gcr.io
-          username: oauth2accesstoken
-          password: ${{ steps.gcp-auth.outputs.access_token }}
-
-      - name: "Set up Cloud SDK"
-        uses: "google-github-actions/setup-gcloud@v2"
-
-      - name: docker registry configure europe-docker.pkg.dev for gcloud
-        run: gcloud auth configure-docker europe-docker.pkg.dev
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -145,6 +124,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          platforms: linux/amd64
+          tags: ripley:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Docker image
+        run: |
+          docker run --rm ripley:ci-${{ github.sha }} --help
+
+  docker-gcr:
+    name: Docker Push GCR
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    needs: [test, build, docker]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Authenticate to Google Cloud
         id: gcp-auth
         uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2.1.8
@@ -160,19 +167,10 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.gcp-auth.outputs.access_token }}
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: binaries
-          path: .
-
-      - name: Make binaries executable
-        run: chmod +x ripley tools/linkerdxripley/linkerdxripley
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
+      - name: Build and push GCR image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -185,6 +183,96 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Test Docker image
+  docker-hub:
+    name: Docker Push Docker Hub
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    needs: [test, build, docker]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker Hub image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            loveholidays/ripley:latest
+            loveholidays/ripley:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release-tag:
+    name: Create release tag
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    needs: [test, lint, build, docker, docker-gcr, docker-hub]
+    concurrency:
+      group: ripley-release-tag-main
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.TOKEN_GORELEASER }}
+
+      - name: Calculate release version
+        id: version
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          docker run --rm eu.gcr.io/loveholidays-ci-cd/ripley:latest --help
+          set -euo pipefail
+
+          git fetch --tags --force
+
+          existing_tag="$(git tag --points-at "$GITHUB_SHA" --list 'v[0-9]*' | sort -V | tail -n 1)"
+          if [[ -n "$existing_tag" ]]; then
+            echo "tag=$existing_tag" >> "$GITHUB_OUTPUT"
+            echo "create_tag=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          current_tag="$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)"
+          if [[ ! "$current_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Expected a semantic version tag, found: ${current_tag:-none}" >&2
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          if [[ "$COMMIT_MESSAGE" == *"#major"* ]]; then
+            major=$((major + 1))
+            minor=0
+          else
+            minor=$((minor + 1))
+          fi
+
+          echo "tag=v${major}.${minor}.0" >> "$GITHUB_OUTPUT"
+          echo "create_tag=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push release tag
+        if: ${{ steps.version.outputs.create_tag == 'true' }}
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"

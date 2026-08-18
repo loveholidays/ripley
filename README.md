@@ -94,6 +94,29 @@ produces
 
 Results output can be suppressed using the `-silent` flag.
 
+## Metrics and profiling
+
+Enable Prometheus metrics with `-metricsServerEnable`. Ripley listens on
+`0.0.0.0:8081` by default and exposes metrics at `/metrics`.
+
+Use `-pushgateway-url`, `-pushgateway-job`, and `-pushgateway-interval` to
+persist metrics for short-lived Jobs. Ripley pushes immediately, at the configured
+interval, and when it exits normally.
+
+Use `-pprof-enable` with `-metricsServerEnable` to expose Go profiles on the same
+listener. Keep this endpoint private. During an active run, use port-forwarding to
+inspect:
+
+```text
+/debug/pprof/goroutine?debug=1
+/debug/pprof/heap
+/debug/pprof/profile?seconds=30
+/debug/pprof/threadcreate
+/debug/pprof/block
+/debug/pprof/mutex
+/debug/pprof/trace?seconds=5
+```
+
 For an example of working with ripley's output to generate statistics, refer to https://gist.github.com/georgemalamidis-lh/39b4f4a6c9c82f6cc8b7370219e93cd2
 
 ```bash
@@ -216,4 +239,9 @@ go test pkg/*.go
 ```
 
 ## Releasing new versions
-Push a new tag to `main` to trigger the GoReleaser process.
+A successful merge to `main` creates a release tag and starts GoReleaser.
+
+- Normal merge: increments the minor version, for example `v0.1.3` to `v0.2.0`.
+- Merge commit message containing `#major`: increments the major version, for example `v0.1.3` to `v1.0.0`.
+
+Do not create release tags manually.
