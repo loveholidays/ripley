@@ -144,6 +144,7 @@ jobs:
 
   docker-gcr:
     name: Docker Push GCR
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     needs: [test, build, docker]
 
