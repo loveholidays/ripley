@@ -185,6 +185,7 @@ jobs:
 
   docker-hub:
     name: Docker Push Docker Hub
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     needs: [test, build, docker]
 
