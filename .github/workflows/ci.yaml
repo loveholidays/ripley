@@ -229,7 +229,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.TOKEN_GORELEASER }}
 
       - name: Calculate release version
         id: version
@@ -268,11 +267,13 @@ jobs:
       - name: Push release tag
         if: ${{ steps.version.outputs.create_tag == 'true' }}
         env:
+          RELEASE_TOKEN: ${{ secrets.TOKEN_GORELEASER }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
