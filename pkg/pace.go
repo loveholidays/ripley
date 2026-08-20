@@ -152,19 +152,26 @@ func (p *pacer) reportStats(now, expectedWallTime time.Time) {
 func parsePhases(phasesStr string) ([]*phase, error) {
 	var phases []*phase
 
-	for _, durationAtRate := range strings.Split(phasesStr, " ") {
+	for _, durationAtRate := range strings.Fields(phasesStr) {
 		tokens := strings.Split(durationAtRate, "@")
+
+		if len(tokens) != 2 {
+			return nil, fmt.Errorf("invalid phase %q: expected [duration]@[rate], e.g. 10s@1.5", durationAtRate)
+		}
 
 		duration, err := time.ParseDuration(tokens[0])
 
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid duration in phase %q: %w", durationAtRate, err)
 		}
 
 		rate, err := strconv.ParseFloat(tokens[1], 64)
 
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid rate in phase %q: %w", durationAtRate, err)
+		}
+		if rate <= 0 || duration <= 0 {
+			return nil, fmt.Errorf("invalid phase %q: rate and duration must be positive", durationAtRate)
 		}
 
 		phases = append(phases, &phase{duration, rate})
