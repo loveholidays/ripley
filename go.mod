@@ -2,7 +2,7 @@ module github.com/loveholidays/ripley
 
 go 1.23.0
 
-toolchain go1.24.1
+toolchain go1.26.10
 
 require github.com/prometheus/client_golang v1.23.2
 

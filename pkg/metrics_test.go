@@ -294,7 +294,11 @@ func TestStartMetricsServer_ProfilingEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to access pprof endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("Failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", resp.StatusCode)
