@@ -49,7 +49,15 @@ dockers:
   - image_templates: ["loveholidays/{{ .ProjectName }}:{{ .Version }}-amd64"]
     goarch: amd64
     dockerfile: Dockerfile
+    use: buildx
+    extra_files:
+      - go.mod
+      - go.sum
+      - main.go
+      - pkg
+      - tools
     build_flag_templates:
+      - --builder={{ .Env.BUILDX_BUILDER }}
       - --platform=linux/amd64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}
@@ -60,7 +68,15 @@ dockers:
   - image_templates: [ "loveholidays/{{ .ProjectName }}:latest" ]
     goarch: amd64
     dockerfile: Dockerfile
+    use: buildx
+    extra_files:
+      - go.mod
+      - go.sum
+      - main.go
+      - pkg
+      - tools
     build_flag_templates:
+      - --builder={{ .Env.BUILDX_BUILDER }}
       - --platform=linux/amd64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}

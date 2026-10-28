@@ -1,5 +1,5 @@
 # Stage 1: Build the binaries
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git
@@ -32,6 +32,8 @@ COPY --from=builder /build/ripley /app/ripley
 COPY --from=builder /build/linkerdxripley /app/linkerdxripley
 
 # Ensure binaries are executable
-RUN chmod +x /app/ripley /app/linkerdxripley
+RUN chmod +x /app/ripley /app/linkerdxripley \
+    && ln -s /app/ripley /usr/local/bin/ripley \
+    && ln -s /app/linkerdxripley /usr/local/bin/linkerdxripley
 
 ENTRYPOINT ["/app/ripley"]
