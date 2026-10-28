@@ -23,7 +23,12 @@ jobs:
         name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.22
+          go-version: 1.26.10
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
       -
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
@@ -32,4 +37,5 @@ jobs:
           version: latest
           args: release --clean
         env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
           GITHUB_TOKEN: ${{ secrets.TOKEN_GORELEASER }}
