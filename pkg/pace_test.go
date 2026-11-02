@@ -141,3 +141,15 @@ func TestPacerDoneOnLastPhaseElapsed(t *testing.T) {
 func equalsWithinThreshold(d1, d2, threshold time.Duration) bool {
 	return math.Abs(float64(d1-d2)) <= float64(threshold)
 }
+
+func TestParsePhasesErrors(t *testing.T) {
+	for _, input := range []string{
+		"10s", "10s@", "@5", "bad", "10s@0", "10s@-1", "10s@abc",
+	} {
+		t.Run(input, func(t *testing.T) {
+			if _, err := parsePhases(input); err == nil {
+				t.Errorf("parsePhases(%q) = nil; want error", input)
+			}
+		})
+	}
+}
