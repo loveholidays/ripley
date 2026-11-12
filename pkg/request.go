@@ -49,6 +49,11 @@ type Request struct {
 	// ordinary client timeout; negative values are invalid.
 	DisconnectAfter Duration `json:"disconnectAfter,omitempty"`
 
+	// Network limits how fast the response body is read. In JSON it is a
+	// Chrome DevTools preset ("3g", "slow-4g" or "fast-4g") or a whole number of
+	// kilobits per second. 0 means unlimited.
+	Network Kbps `json:"network,omitempty"`
+
 	// disconnectAt is the wall time at which the client ends the request. The
 	// replay loop sets it from DisconnectAfter through the pacer's timeline;
 	// the zero value means no session limit.

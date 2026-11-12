@@ -144,6 +144,46 @@ go build -o ripley main.go
 printf '%s\n' '{"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","headers":{"Accept":"text/event-stream"},"disconnectAfter":"5s"}' | ./ripley
 ```
 
+## Slow clients
+
+An optional `network` field limits how fast Ripley reads the response body, to
+replay clients on slow connections. It is either a Chrome DevTools preset:
+
+```json
+{"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","disconnectAfter":"5m","network":"3g"}
+```
+
+| `network` | Download speed |
+| --- | --- |
+| `"3g"` | 400 kbps (50 KB/s) |
+| `"slow-4g"` | 1440 kbps (180 KB/s) |
+| `"fast-4g"` | 8100 kbps (1 MB/s) |
+
+or, for any other speed, a whole number of kilobits per second, as in Chrome's
+custom profiles: `"network": 750`. Omitted or `0` means unlimited. Unknown
+presets, fractions, negative speeds and speeds above 10 Gbps are rejected.
+Results echo the speed as a number, so `"3g"` appears as `400`.
+
+Only the response body is limited: request bodies, headers and connection
+setup are not, and no latency is added. Each replayed request gets its own
+speed, as if it came from a different device; Chrome instead shares one speed
+between a page's requests.
+
+Ripley reads in chunks of at most a quarter of a second's worth (and at most
+8 KiB) and sleeps between them, so the limit is an average with small bursts.
+When the server sends more slowly than the limit, Ripley reads data as it
+arrives, and quiet periods earn at most a quarter second's allowance: a burst
+after a silent spell, as is common with SSE, is still read at the limited
+speed, as in Chrome.
+
+The server sees the slow client through TCP backpressure, but kernel and HTTP/2
+buffering let it send somewhat ahead of what Ripley has read. Go transparently
+decompresses gzip responses unless the request sets `Accept-Encoding`, so by
+default the limit applies to the decompressed bytes; set `Accept-Encoding` to
+limit the bytes as sent. A throttled request can overrun `-timeout` by up to one
+chunk's sleep, because the timeout is noticed on the next read;
+`disconnectAfter` interrupts the sleep immediately.
+
 ## Metrics and profiling
 
 Enable Prometheus metrics with `-metricsServerEnable`. Ripley listens on

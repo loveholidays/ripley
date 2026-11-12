@@ -24,6 +24,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/loveholidays/ripley/pkg/internal/slowio"
 )
 
 type Result struct {
@@ -112,7 +114,7 @@ func executeRequest(client *http.Client, req *Request, start time.Time) *Result 
 		defer cancel()
 	}
 
-	status, err := discardResponse(client, httpReq)
+	status, err := discardResponse(client, httpReq, req.Network.bytesPerSecond())
 	res := &Result{Request: req, Latency: time.Since(start), StatusCode: status}
 	classify(httpReq.Context(), res, err)
 	return res
@@ -129,14 +131,19 @@ func withSession(client *http.Client, req *http.Request, deadline time.Time) (*h
 }
 
 // discardResponse sends req and consumes the body without retaining it, so
-// memory stays bounded for long-lived streams such as SSE. It returns the
+// memory stays bounded for long-lived streams such as SSE. A positive rate
+// limits how fast the body is read, in bytes per second. It returns the
 // status code, which is nonzero whenever response headers arrived.
-func discardResponse(client *http.Client, req *http.Request) (int, error) {
+func discardResponse(client *http.Client, req *http.Request, rate int64) (int, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
 	}
-	_, err = io.Copy(io.Discard, resp.Body)
+	var body io.Reader = resp.Body
+	if rate > 0 {
+		body = slowio.NewReader(req.Context(), resp.Body, rate)
+	}
+	_, err = io.Copy(io.Discard, body)
 	if closeErr := resp.Body.Close(); err == nil {
 		err = closeErr
 	}
