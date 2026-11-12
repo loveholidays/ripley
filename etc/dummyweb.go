@@ -5,13 +5,20 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
 
-var count int
+// Counters for the once-a-second report. Atomic, because every request runs
+// in its own goroutine.
+var (
+	requests atomic.Int64 // requests to / this second
+	streams  atomic.Int64 // /sse streams started this second
+	open     atomic.Int64 // /sse streams open now
+)
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	count++
+	requests.Add(1)
 	time.Sleep(time.Duration(rand.Intn(250)) * time.Millisecond)
 	_, _ = w.Write([]byte("hi\n"))
 }
@@ -34,6 +41,10 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		end = time.After(lifetime)
 	}
+
+	streams.Add(1)
+	open.Add(1)
+	defer open.Add(-1)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -58,12 +69,11 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// Crude RPS reporting
+	// Crude per-second reporting: "rps" counts requests to /, "sse/s" new
+	// /sse streams, and "sse open" the streams still open.
 	go func() {
-		for {
-			fmt.Printf("rps: %d\n", count)
-			count = 0
-			time.Sleep(time.Second)
+		for range time.Tick(time.Second) {
+			fmt.Printf("rps: %d sse/s: %d sse open: %d\n", requests.Swap(0), streams.Swap(0), open.Load())
 		}
 	}()
 
