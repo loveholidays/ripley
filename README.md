@@ -130,7 +130,9 @@ Ripley does not parse individual SSE events or automatically reconnect. Captured
 reconnections must appear as separate requests in the input. SSE does not require
 HTTP/1.1; the ordinary transport can negotiate HTTP/2 over HTTPS.
 
-Try the sample server in one terminal with `go run etc/dummyweb.go`, then:
+Try the sample server in one terminal with `go run etc/dummyweb.go`. Its `/sse`
+streams until the client disconnects; `/sse?lifetime=10s` makes the server end
+the stream itself after 10 seconds. Then:
 
 ```bash
 go build -o ripley main.go
