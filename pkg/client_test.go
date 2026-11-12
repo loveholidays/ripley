@@ -97,7 +97,8 @@ func runRequest(client *http.Client, req *Request) *Result {
 	return <-results
 }
 
-func session(url string, disconnectAfter time.Duration) *Request {
+// get builds a GET request. A zero disconnectAfter makes an ordinary request.
+func get(url string, disconnectAfter time.Duration) *Request {
 	return &Request{Method: "GET", Url: url, DisconnectAfter: Duration(disconnectAfter)}
 }
 
@@ -116,7 +117,7 @@ func TestSessionOutcome(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res := runRequest(testClient(t, time.Second), session(serve(t, tt.handler), tt.disconnectAfter))
+			res := runRequest(testClient(t, time.Second), get(serve(t, tt.handler), tt.disconnectAfter))
 			if got := outcomeOf(res); got != tt.want {
 				t.Fatalf("result = %+v; want %+v", res, tt.want)
 			}
@@ -130,7 +131,7 @@ func TestSessionOutcome(t *testing.T) {
 func TestSessionDoesNotChangeOrdinaryRequestTimeout(t *testing.T) {
 	url := serve(t, sseEvents)
 	client := testClient(t, 50*time.Millisecond)
-	requests := []*Request{session(url, 200*time.Millisecond), session(url, 0)}
+	requests := []*Request{get(url, 200*time.Millisecond), get(url, 0)}
 	results := make(chan *Result, len(requests))
 	for _, req := range requests {
 		go executeRequest(client, req, time.Now(), results)
@@ -155,7 +156,7 @@ func TestNonpositiveTimeoutDisablesDeadline(t *testing.T) {
 	url := serve(t, writeOK)
 	for _, timeout := range []time.Duration{0, -time.Second} {
 		t.Run(timeout.String(), func(t *testing.T) {
-			res := runRequest(testClient(t, timeout), session(url, 0))
+			res := runRequest(testClient(t, timeout), get(url, 0))
 			if got := outcomeOf(res); got != (outcome{status: 200}) {
 				t.Fatalf("result = %+v; want no deadline", res)
 			}
@@ -171,13 +172,20 @@ func TestSilentSessionClosesAtRequestedDuration(t *testing.T) {
 		<-r.Context().Done()
 		close(closed)
 	})
-	res := runRequest(testClient(t, 50*time.Millisecond), session(url, 200*time.Millisecond))
+	res := runRequest(testClient(t, 50*time.Millisecond), get(url, 200*time.Millisecond))
 	if got := outcomeOf(res); got != (outcome{status: 200, disconnected: true}) {
 		t.Fatalf("result = %+v; want legal silence until the session deadline", res)
 	}
 	if res.Latency < 200*time.Millisecond {
 		t.Errorf("Latency = %v; want at least 200ms", res.Latency)
 	}
+	waitClosed(t, closed)
+}
+
+// waitClosed fails the test unless the server closes closed within 5s,
+// showing that it saw the client go.
+func waitClosed(t *testing.T, closed <-chan struct{}) {
+	t.Helper()
 	select {
 	case <-closed:
 	case <-time.After(5 * time.Second):

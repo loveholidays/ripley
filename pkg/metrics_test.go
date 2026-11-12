@@ -534,9 +534,9 @@ type partialDeleter interface {
 	DeletePartialMatch(prometheus.Labels) int
 }
 
-// seriesFor counts, and removes, the series in v that carry the given host
+// removeSeries removes, and counts, the series in v that carry the given host
 // label. Removing them is harmless: host is unique to the calling test.
-func seriesFor(v partialDeleter, host string) int {
+func removeSeries(v partialDeleter, host string) int {
 	return v.DeletePartialMatch(prometheus.Labels{"host": host})
 }
 
@@ -550,13 +550,13 @@ func TestRecordRequestSkipsDisconnects(t *testing.T) {
 			Disconnected: true,
 		})
 	}
-	if n := seriesFor(requestDuration, host); n != 0 {
+	if n := removeSeries(requestDuration, host); n != 0 {
 		t.Errorf("duration series for disconnects = %d; want 0", n)
 	}
-	if n := seriesFor(responseStatus, host); n != 0 {
+	if n := removeSeries(responseStatus, host); n != 0 {
 		t.Errorf("status series for disconnects = %d; want 0", n)
 	}
-	if n := seriesFor(errorsTotal, host); n != 0 {
+	if n := removeSeries(errorsTotal, host); n != 0 {
 		t.Errorf("error series for disconnects = %d; want 0", n)
 	}
 }

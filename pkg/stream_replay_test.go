@@ -39,23 +39,26 @@ func TestReplayMixesSSEAndShortRequests(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("got %d results; want 2", len(results))
 	}
-	var disconnects int
+	if n := countDisconnects(t, results); n != 1 {
+		t.Fatalf("disconnects = %d; want one stream and one normal completion", n)
+	}
+	waitClosed(t, closed)
+}
+
+// countDisconnects counts the disconnected results, failing the test if any
+// result is not a successful 200.
+func countDisconnects(t *testing.T, results []Result) int {
+	t.Helper()
+	n := 0
 	for _, res := range results {
-		if res.ErrorMsg != "" || res.StatusCode != 200 {
+		if succeeded := res.ErrorMsg == "" && res.StatusCode == 200; !succeeded {
 			t.Fatalf("unexpected result: %+v", res)
 		}
 		if res.Disconnected {
-			disconnects++
+			n++
 		}
 	}
-	if disconnects != 1 {
-		t.Fatalf("disconnects = %d; want one stream and one normal completion", disconnects)
-	}
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("server session did not close")
-	}
+	return n
 }
 
 // newMixedServer answers /sse with a stream that stays open until the client
