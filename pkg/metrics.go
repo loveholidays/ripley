@@ -269,7 +269,9 @@ func RecordRequest(result *Result) {
 
 	if result.ErrorMsg != "" {
 		errorsTotal.WithLabelValues(host).Inc()
-	} else {
+	} else if !result.Disconnected {
+		// A disconnect's length came from the input, not the server, and it
+		// may have no status yet, so it is kept out of both series.
 		requestDuration.WithLabelValues(host).Observe(result.Latency.Seconds())
 		responseStatus.WithLabelValues(http.StatusText(result.StatusCode), host).Inc()
 	}
