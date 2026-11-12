@@ -94,6 +94,51 @@ produces
 
 Results output can be suppressed using the `-silent` flag.
 
+## Long-lived responses and SSE
+
+Ripley consumes response bodies incrementally without retaining their contents.
+SSE sessions are ordinary HTTP requests: supply the captured headers and an optional
+`disconnectAfter` (a Go duration string) to reproduce the client's session lifetime.
+
+```json
+{"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","headers":{"Accept":"text/event-stream","Last-Event-ID":"42"},"disconnectAfter":"5m"}
+```
+
+A positive `disconnectAfter` starts when request execution begins and covers
+connection setup and response-body consumption. It replaces `-timeout` for that
+request only. Zero or omitted `disconnectAfter` retains the existing client
+timeout; negative durations are invalid.
+
+When the session deadline expires first, the result has `"disconnected": true`
+and an empty `error`. This includes a server that never sends response headers:
+there is no separate header timeout, so such a session reports
+`"disconnected": true` with `"statusCode": 0`. If the server ends the response
+first, the result is a normal completion. Other failures remain errors, with
+`statusCode` zero as before. `latency` includes setup and response-body
+consumption. Ordinary results omit the new `disconnected` field. The echoed
+request normalizes durations, so `"5m"` appears as `"5m0s"`.
+
+Disconnected requests count towards `ripley_requests_total`, but not towards
+`ripley_request_duration_seconds` or `ripley_response_status_total`: their
+length was set by the input rather than measured, and they may have no status.
+
+Silence is legal in SSE and does not terminate a session. A long-lived response
+occupies an existing worker, so increase `-workers` for the expected concurrent
+sessions.
+
+Ripley does not parse individual SSE events or automatically reconnect. Captured
+reconnections must appear as separate requests in the input. SSE does not require
+HTTP/1.1; the ordinary transport can negotiate HTTP/2 over HTTPS.
+
+Try the sample server in one terminal with `go run etc/dummyweb.go`, then:
+
+```bash
+go build -o ripley main.go
+printf '%s\n' '{"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","headers":{"Accept":"text/event-stream"},"disconnectAfter":"5s"}' | ./ripley
+```
+
+The existing replay functions, CLI flags, and worker pool are unchanged.
+
 ## Metrics and profiling
 
 Enable Prometheus metrics with `-metricsServerEnable`. Ripley listens on

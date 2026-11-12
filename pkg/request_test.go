@@ -19,6 +19,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -56,5 +58,60 @@ func TestUnrmarshalValid(t *testing.T) {
 
 	if req.Timestamp != expectedTime {
 		t.Errorf("req.Timestamp = %v; want %v", req.Timestamp, expectedTime)
+	}
+}
+
+func TestUnmarshalClientBehaviour(t *testing.T) {
+	jsonRequest := `{"method": "GET", "url": "http://example.com/sse", "timestamp": "2021-11-08T18:59:59.9Z", "disconnectAfter": "1m30s"}`
+	req, err := unmarshalRequest([]byte(jsonRequest))
+	if err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+
+	if time.Duration(req.DisconnectAfter) != 90*time.Second {
+		t.Errorf("req.DisconnectAfter = %v; want 1m30s", time.Duration(req.DisconnectAfter))
+	}
+}
+
+func TestUnmarshalInvalidClientBehaviour(t *testing.T) {
+	tests := map[string]string{
+		"numeric duration":  `"disconnectAfter": 30`,
+		"bad duration":      `"disconnectAfter": "soon"`,
+		"negative duration": `"disconnectAfter": "-1s"`,
+	}
+
+	for name, field := range tests {
+		t.Run(name, func(t *testing.T) {
+			jsonRequest := `{"method": "GET", "url": "http://example.com", "timestamp": "2021-11-08T18:59:59.9Z", ` + field + `}`
+			if _, err := unmarshalRequest([]byte(jsonRequest)); err == nil {
+				t.Error("err = nil; want an error")
+			}
+		})
+	}
+}
+
+func TestDurationMarshalsAsString(t *testing.T) {
+	b, err := json.Marshal(&Request{DisconnectAfter: Duration(30 * time.Second)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"disconnectAfter":"30s"`) {
+		t.Errorf("json = %s; want duration as \"30s\"", b)
+	}
+
+	b, _ = json.Marshal(&Request{})
+	if strings.Contains(string(b), "disconnectAfter") {
+		t.Errorf("json = %s; want zero duration omitted", b)
+	}
+}
+
+func TestNullDisconnectAfterMeansNotSet(t *testing.T) {
+	jsonRequest := `{"method": "GET", "url": "http://example.com", "timestamp": "2021-11-08T18:59:59.9Z", "disconnectAfter": null}`
+	req, err := unmarshalRequest([]byte(jsonRequest))
+	if err != nil {
+		t.Fatalf("err = %v; want nil", err)
+	}
+	if req.DisconnectAfter != 0 {
+		t.Errorf("req.DisconnectAfter = %v; want 0", time.Duration(req.DisconnectAfter))
 	}
 }

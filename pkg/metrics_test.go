@@ -25,6 +25,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func TestNewMetricsRecorder_Disabled(t *testing.T) {
@@ -524,5 +527,47 @@ func TestMetricsRecorder_MultipleRequests(t *testing.T) {
 	// If we had no requests initially, we should have exactly 5 now
 	if !initialHasRequests && !strings.Contains(metrics, "ripley_requests_total 5") {
 		t.Error("Expected ripley_requests_total to be 5 for new instance")
+	}
+}
+
+// seriesFor counts the series in c that carry the given host label.
+func seriesFor(t *testing.T, c prometheus.Collector, host string) int {
+	t.Helper()
+	ch := make(chan prometheus.Metric, 100)
+	c.Collect(ch)
+	close(ch)
+	n := 0
+	for m := range ch {
+		var pb dto.Metric
+		if err := m.Write(&pb); err != nil {
+			t.Fatal(err)
+		}
+		for _, l := range pb.GetLabel() {
+			if l.GetName() == "host" && l.GetValue() == host {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+func TestRecordRequestSkipsDisconnects(t *testing.T) {
+	const host = "disconnect.test"
+	for _, status := range []int{http.StatusOK, 0} { // with and without headers
+		RecordRequest(&Result{
+			Request:      &Request{Url: "http://" + host},
+			StatusCode:   status,
+			Latency:      5 * time.Minute,
+			Disconnected: true,
+		})
+	}
+	if n := seriesFor(t, requestDuration, host); n != 0 {
+		t.Errorf("duration series for disconnects = %d; want 0", n)
+	}
+	if n := seriesFor(t, responseStatus, host); n != 0 {
+		t.Errorf("status series for disconnects = %d; want 0", n)
+	}
+	if n := seriesFor(t, errorsTotal, host); n != 0 {
+		t.Errorf("error series for disconnects = %d; want 0", n)
 	}
 }
