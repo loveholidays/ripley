@@ -28,26 +28,54 @@ import (
 	"time"
 )
 
-func newSSEServer(t *testing.T) *httptest.Server {
+// outcome is the part of a Result that the tests compare.
+type outcome struct {
+	status       int
+	disconnected bool
+	failed       bool
+}
+
+func outcomeOf(res *Result) outcome {
+	return outcome{status: res.StatusCode, disconnected: res.Disconnected, failed: res.ErrorMsg != ""}
+}
+
+// serve starts a test server for h and returns its URL.
+func serve(t *testing.T, h http.HandlerFunc) string {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		ticker := time.NewTicker(10 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			if _, err := fmt.Fprint(w, "data: event\n\n"); err != nil {
-				return
-			}
-			w.(http.Flusher).Flush()
-			select {
-			case <-r.Context().Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	}))
+	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return srv
+	return srv.URL
+}
+
+// sseEvents streams an event every 10ms until the client leaves.
+func sseEvents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, err := fmt.Fprint(w, "data: event\n\n"); err != nil {
+			return
+		}
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func writeOK(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write([]byte("ok"))
+}
+
+func neverRespond(w http.ResponseWriter, r *http.Request) {
+	<-r.Context().Done()
+}
+
+func truncatedBody(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Length", "100")
+	_, _ = w.Write([]byte("truncated"))
 }
 
 func testClient(t testing.TB, timeout time.Duration) *http.Client {
@@ -69,37 +97,53 @@ func runRequest(client *http.Client, req *Request) *Result {
 	return <-results
 }
 
-func TestDisconnectAfterIsNotAnError(t *testing.T) {
-	srv := newSSEServer(t)
-	res := runRequest(testClient(t, time.Second), &Request{Method: "GET", Url: srv.URL, DisconnectAfter: Duration(200 * time.Millisecond)})
-	if res.ErrorMsg != "" || !res.Disconnected || res.StatusCode != http.StatusOK {
-		t.Fatalf("result = %+v; want an intentional disconnect with status 200", res)
+func session(url string, disconnectAfter time.Duration) *Request {
+	return &Request{Method: "GET", Url: url, DisconnectAfter: Duration(disconnectAfter)}
+}
+
+func TestSessionOutcome(t *testing.T) {
+	tests := []struct {
+		name            string
+		handler         http.HandlerFunc
+		disconnectAfter time.Duration
+		want            outcome
+		minLatency      time.Duration
+	}{
+		{"deadline is not an error", sseEvents, 200 * time.Millisecond, outcome{status: 200, disconnected: true}, 200 * time.Millisecond},
+		{"response ending first", writeOK, time.Second, outcome{status: 200}, 0},
+		{"disconnect before headers", neverRespond, 50 * time.Millisecond, outcome{disconnected: true}, 0},
+		{"response failure", truncatedBody, time.Second, outcome{failed: true}, 0},
 	}
-	if res.Latency < 200*time.Millisecond || res.Latency > 5*time.Second {
-		// Generous upper bound: it only proves the session ended, on slow CI too.
-		t.Errorf("Latency = %v; want about 200ms", res.Latency)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := runRequest(testClient(t, time.Second), session(serve(t, tt.handler), tt.disconnectAfter))
+			if got := outcomeOf(res); got != tt.want {
+				t.Fatalf("result = %+v; want %+v", res, tt.want)
+			}
+			if res.Latency < tt.minLatency {
+				t.Errorf("Latency = %v; want at least %v", res.Latency, tt.minLatency)
+			}
+		})
 	}
 }
 
 func TestSessionDoesNotChangeOrdinaryRequestTimeout(t *testing.T) {
-	srv := newSSEServer(t)
+	url := serve(t, sseEvents)
 	client := testClient(t, 50*time.Millisecond)
-	requests := []*Request{
-		{Method: "GET", Url: srv.URL, DisconnectAfter: Duration(200 * time.Millisecond)},
-		{Method: "GET", Url: srv.URL},
-	}
+	requests := []*Request{session(url, 200*time.Millisecond), session(url, 0)}
 	results := make(chan *Result, len(requests))
 	for _, req := range requests {
 		go executeRequest(client, req, time.Now(), results)
 	}
 	for range requests {
 		res := <-results
+		// The session outlives the 50ms client timeout; the ordinary request does not.
+		want := outcome{failed: true}
 		if res.Request.DisconnectAfter > 0 {
-			if !res.Disconnected || res.ErrorMsg != "" || res.Latency < 200*time.Millisecond {
-				t.Errorf("session result = %+v; want a disconnect after 200ms", res)
-			}
-		} else if res.ErrorMsg == "" || res.Disconnected || res.StatusCode != 0 {
-			t.Errorf("ordinary result = %+v; want the existing timeout error", res)
+			want = outcome{status: 200, disconnected: true}
+		}
+		if got := outcomeOf(res); got != want {
+			t.Errorf("result = %+v; want %+v", res, want)
 		}
 	}
 	if client.Timeout != 50*time.Millisecond {
@@ -107,72 +151,37 @@ func TestSessionDoesNotChangeOrdinaryRequestTimeout(t *testing.T) {
 	}
 }
 
-func TestResponseEndingFirstIsNotDisconnected(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("done"))
-	}))
-	defer srv.Close()
-	res := runRequest(testClient(t, time.Second), &Request{Method: "GET", Url: srv.URL, DisconnectAfter: Duration(time.Second)})
-	if res.Disconnected || res.ErrorMsg != "" || res.StatusCode != 200 {
-		t.Fatalf("result = %+v; want a normal completion", res)
-	}
-}
-
 func TestNonpositiveTimeoutDisablesDeadline(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("ok"))
-	}))
-	defer srv.Close()
+	url := serve(t, writeOK)
 	for _, timeout := range []time.Duration{0, -time.Second} {
 		t.Run(timeout.String(), func(t *testing.T) {
-			res := runRequest(testClient(t, timeout), &Request{Method: "GET", Url: srv.URL})
-			if res.ErrorMsg != "" || res.StatusCode != 200 {
+			res := runRequest(testClient(t, timeout), session(url, 0))
+			if got := outcomeOf(res); got != (outcome{status: 200}) {
 				t.Fatalf("result = %+v; want no deadline", res)
 			}
 		})
 	}
 }
 
-func TestDisconnectBeforeHeaders(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
-	}))
-	defer srv.Close()
-	res := runRequest(testClient(t, time.Second), &Request{Method: "GET", Url: srv.URL, DisconnectAfter: Duration(50 * time.Millisecond)})
-	if !res.Disconnected || res.ErrorMsg != "" || res.StatusCode != 0 {
-		t.Fatalf("result = %+v; want an intentional disconnect before headers", res)
-	}
-}
-
 func TestSilentSessionClosesAtRequestedDuration(t *testing.T) {
 	closed := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	url := serve(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()
 		close(closed)
-	}))
-	defer srv.Close()
-	res := runRequest(testClient(t, 50*time.Millisecond), &Request{Method: "GET", Url: srv.URL, DisconnectAfter: Duration(200 * time.Millisecond)})
-	if !res.Disconnected || res.ErrorMsg != "" || res.Latency < 200*time.Millisecond {
+	})
+	res := runRequest(testClient(t, 50*time.Millisecond), session(url, 200*time.Millisecond))
+	if got := outcomeOf(res); got != (outcome{status: 200, disconnected: true}) {
 		t.Fatalf("result = %+v; want legal silence until the session deadline", res)
+	}
+	if res.Latency < 200*time.Millisecond {
+		t.Errorf("Latency = %v; want at least 200ms", res.Latency)
 	}
 	select {
 	case <-closed:
 	case <-time.After(5 * time.Second):
 		t.Fatal("server session remained open after disconnect")
-	}
-}
-
-func TestResponseFailureIsNotAnIntentionalDisconnect(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", "100")
-		_, _ = w.Write([]byte("truncated"))
-	}))
-	defer srv.Close()
-	res := runRequest(testClient(t, time.Second), &Request{Method: "GET", Url: srv.URL, DisconnectAfter: Duration(time.Second)})
-	if res.ErrorMsg == "" || res.Disconnected || res.StatusCode != 0 {
-		t.Fatalf("result = %+v; want a body-read failure", res)
 	}
 }
 

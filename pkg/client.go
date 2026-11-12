@@ -81,7 +81,9 @@ func executeRequest(client *http.Client, req *Request, latencyStart time.Time, r
 	}
 
 	status, err := discardResponse(client, httpReq)
-	results <- newResult(httpReq.Context(), req, latencyStart, status, err)
+	res := &Result{Request: req, Latency: time.Since(latencyStart), StatusCode: status}
+	classify(httpReq.Context(), res, err)
+	results <- res
 }
 
 // withSession bounds req by deadline instead of client.Timeout. It returns a
@@ -109,10 +111,9 @@ func discardResponse(client *http.Client, req *http.Request) (int, error) {
 	return resp.StatusCode, err
 }
 
-// newResult classifies the outcome. Reaching the session deadline is the
-// requested behaviour, so it keeps the status; other errors zero it, as before.
-func newResult(ctx context.Context, req *Request, start time.Time, status int, err error) *Result {
-	res := &Result{Request: req, Latency: time.Since(start), StatusCode: status}
+// classify records the outcome of err on res. Reaching the session deadline is
+// the requested behaviour, so it keeps the status; other errors zero it, as before.
+func classify(ctx context.Context, res *Result, err error) {
 	switch {
 	case err == nil:
 	case sessionEnded(ctx):
@@ -121,7 +122,6 @@ func newResult(ctx context.Context, req *Request, start time.Time, status int, e
 		res.StatusCode = 0
 		res.ErrorMsg = err.Error()
 	}
-	return res
 }
 
 // sessionEnded reports whether ctx hit its deadline. Only withSession sets a

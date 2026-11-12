@@ -32,14 +32,10 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var end <-chan time.Time // nil never fires: stream until the client leaves
-	if s := r.URL.Query().Get("lifetime"); s != "" {
-		lifetime, err := time.ParseDuration(s)
-		if err != nil || lifetime <= 0 {
-			http.Error(w, "lifetime must be a positive duration such as 10s", http.StatusBadRequest)
-			return
-		}
-		end = time.After(lifetime)
+	end, ok := streamEnd(r)
+	if !ok {
+		http.Error(w, "lifetime must be a positive duration such as 10s", http.StatusBadRequest)
+		return
 	}
 
 	streams.Add(1)
@@ -60,12 +56,36 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 		case <-end:
 			return
 		case <-ticker.C:
-			if _, err := fmt.Fprintf(w, "id: %d\ndata: event %d\n\n", id, id); err != nil {
-				return
-			}
-			flusher.Flush()
+		}
+		if !sendEvent(w, flusher, id) {
+			return
 		}
 	}
+}
+
+// streamEnd returns a channel that fires when the ?lifetime has elapsed, or a
+// nil channel, which never fires, when there is no lifetime. It reports false
+// if the lifetime is not a positive duration.
+func streamEnd(r *http.Request) (<-chan time.Time, bool) {
+	s := r.URL.Query().Get("lifetime")
+	if s == "" {
+		return nil, true
+	}
+	lifetime, err := time.ParseDuration(s)
+	if err != nil || lifetime <= 0 {
+		return nil, false
+	}
+	return time.After(lifetime), true
+}
+
+// sendEvent writes one event and flushes it. It reports false once the
+// client has gone.
+func sendEvent(w http.ResponseWriter, flusher http.Flusher, id int) bool {
+	if _, err := fmt.Fprintf(w, "id: %d\ndata: event %d\n\n", id, id); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 func main() {

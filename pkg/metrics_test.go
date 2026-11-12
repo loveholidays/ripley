@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 )
 
 func TestNewMetricsRecorder_Disabled(t *testing.T) {
@@ -530,25 +529,15 @@ func TestMetricsRecorder_MultipleRequests(t *testing.T) {
 	}
 }
 
-// seriesFor counts the series in c that carry the given host label.
-func seriesFor(t *testing.T, c prometheus.Collector, host string) int {
-	t.Helper()
-	ch := make(chan prometheus.Metric, 100)
-	c.Collect(ch)
-	close(ch)
-	n := 0
-	for m := range ch {
-		var pb dto.Metric
-		if err := m.Write(&pb); err != nil {
-			t.Fatal(err)
-		}
-		for _, l := range pb.GetLabel() {
-			if l.GetName() == "host" && l.GetValue() == host {
-				n++
-			}
-		}
-	}
-	return n
+// partialDeleter is implemented by every metric vector.
+type partialDeleter interface {
+	DeletePartialMatch(prometheus.Labels) int
+}
+
+// seriesFor counts, and removes, the series in v that carry the given host
+// label. Removing them is harmless: host is unique to the calling test.
+func seriesFor(v partialDeleter, host string) int {
+	return v.DeletePartialMatch(prometheus.Labels{"host": host})
 }
 
 func TestRecordRequestSkipsDisconnects(t *testing.T) {
@@ -561,13 +550,13 @@ func TestRecordRequestSkipsDisconnects(t *testing.T) {
 			Disconnected: true,
 		})
 	}
-	if n := seriesFor(t, requestDuration, host); n != 0 {
+	if n := seriesFor(requestDuration, host); n != 0 {
 		t.Errorf("duration series for disconnects = %d; want 0", n)
 	}
-	if n := seriesFor(t, responseStatus, host); n != 0 {
+	if n := seriesFor(responseStatus, host); n != 0 {
 		t.Errorf("status series for disconnects = %d; want 0", n)
 	}
-	if n := seriesFor(t, errorsTotal, host); n != 0 {
+	if n := seriesFor(errorsTotal, host); n != 0 {
 		t.Errorf("error series for disconnects = %d; want 0", n)
 	}
 }
