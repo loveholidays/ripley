@@ -21,7 +21,9 @@ package ripley
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -61,8 +63,9 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 		panic(err)
 	}
 
-	// Read Request JSONL input from STDIN
-	scanner := bufio.NewScanner(bufio.NewReaderSize(os.Stdin, 32*1024*1024))
+	// Read Request JSONL input from STDIN. bufio.Reader.ReadBytes has no line
+	// length limit, unlike bufio.Scanner, so large request bodies are fine.
+	input := bufio.NewReader(os.Stdin)
 
 	// Start HTTP client goroutine pool
 	startClientWorkers(numWorkers, requests, results, dryRun, timeout, connections, maxConnections, disableKeepAlives)
@@ -94,8 +97,17 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 		}
 	}()
 
-	for scanner.Scan() {
-		req, err := unmarshalRequest(scanner.Bytes())
+	for {
+		// The line keeps its "\n" or "\r\n"; json.Unmarshal treats it as whitespace.
+		line, readErr := input.ReadBytes('\n')
+		if errors.Is(readErr, io.EOF) && len(line) == 0 {
+			break
+		}
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			panic(readErr)
+		}
+
+		req, err := unmarshalRequest(line)
 		if err != nil {
 			exitCode = 126
 			result, _ := json.Marshal(Result{
@@ -121,10 +133,6 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 		time.Sleep(waitDuration)
 		waitGroup.Add(1)
 		requests <- req
-	}
-
-	if scanner.Err() != nil {
-		panic(scanner.Err())
 	}
 
 	// Close requests channel to signal worker goroutines to stop
