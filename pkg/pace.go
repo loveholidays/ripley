@@ -20,24 +20,23 @@ package ripley
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
+// pacer decides when each request is replayed, and reports pacing stats.
+// Only the replay loop uses it, so it needs no locking.
 type pacer struct {
-	ReportInterval        time.Duration
-	mu                    sync.RWMutex // protects all fields below
-	phases                []*phase
-	lastRequestTime       time.Time // last Request that we already replayed in "log time"
-	lastRequestWallTime   time.Time // last Request that we already replayed in "wall time"
-	phaseStartRequestTime time.Time
-	phaseStartWallTime    time.Time
-	done                  bool
-	requestCounter        int
-	nextReport            time.Time
+	ReportInterval  time.Duration
+	phases          []*phase
+	timeline        timeline // anchored by the first call to schedule
+	anchored        bool
+	lastRequestTime time.Time // log time of the last request scheduled
+	requestCounter  int
+	nextReport      time.Time
 }
 
 type phase struct {
@@ -55,83 +54,47 @@ func newPacer(phasesStr string) (*pacer, error) {
 	return &pacer{phases: phases}, nil
 }
 
-func (p *pacer) start() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Run a timer for the first phase's duration
-	if len(p.phases) > 0 {
-		time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
-	}
-	if p.ReportInterval > 0 {
-		p.nextReport = time.Now().Add(p.ReportInterval)
-	}
-}
-
-func (p *pacer) onPhaseElapsed() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Pop phase
-	if len(p.phases) > 0 {
-		p.phases = p.phases[1:]
-	}
-	p.phaseStartRequestTime = p.lastRequestTime
-	p.phaseStartWallTime = p.lastRequestWallTime
-
-	if len(p.phases) == 0 {
-		p.done = true
-	} else {
-		// Create a timer with next phase
-		time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
-	}
-}
-
-func (p *pacer) waitDuration(t time.Time) time.Duration {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
+// schedule returns how long to wait before sending a request logged at t:
+// until its place on the timeline, or zero or less if that has passed. It
+// returns false once the pace is over, or if the request falls after it. The
+// first call anchors the timeline, so the first request is sent at once.
+func (p *pacer) schedule(t time.Time) (time.Duration, bool) {
 	now := time.Now()
-
-	if p.lastRequestTime.IsZero() {
-		p.lastRequestTime = t
-		p.lastRequestWallTime = now
-		p.phaseStartRequestTime = p.lastRequestTime
-		p.phaseStartWallTime = p.lastRequestWallTime
+	if !p.anchored {
+		p.anchor(t, now)
 	}
 
-	// Check if we have any phases left
-	if len(p.phases) == 0 {
-		return 0
+	send := p.timeline.Wall(t)
+	end := p.timeline.End()
+	if now.After(end) || send.After(end) {
+		return 0, false
 	}
 
-	originalDurationFromPhaseStart := t.Sub(p.phaseStartRequestTime)
-	expectedDurationFromPhaseStart := time.Duration(float64(originalDurationFromPhaseStart) / p.phases[0].rate)
-	expectedWallTime := p.phaseStartWallTime.Add(expectedDurationFromPhaseStart)
-
-	p.reportStats(now, expectedWallTime)
-
-	duration := expectedWallTime.Sub(now)
+	p.reportStats(now, send, t)
 	p.lastRequestTime = t
-	p.lastRequestWallTime = expectedWallTime
-	return duration
+	return send.Sub(now), true
 }
 
-func (p *pacer) isDone() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.done
+// wall maps log time t onto the wall clock, such as the moment a session that
+// ends at t in the log should end in the replay. Call it only after schedule.
+func (p *pacer) wall(t time.Time) time.Time {
+	return p.timeline.Wall(t)
 }
 
-func (p *pacer) reportStats(now, expectedWallTime time.Time) {
+func (p *pacer) anchor(logStart, wallStart time.Time) {
+	p.timeline = newTimeline(p.phases, logStart, wallStart)
+	p.anchored = true
+	p.lastRequestTime = logStart
+	if p.ReportInterval > 0 {
+		p.nextReport = wallStart.Add(p.ReportInterval)
+	}
+}
+
+// reportStats prints a line per elapsed report interval. t is the log time of
+// the request being scheduled; its rate is looked up only when printing.
+func (p *pacer) reportStats(now, expectedWallTime, t time.Time) {
 	if p.ReportInterval <= 0 {
 		return
-	}
-
-	// Get current rate safely
-	var currentRate = 1.0
-	if len(p.phases) > 0 {
-		currentRate = p.phases[0].rate
 	}
 
 	for p.nextReport.Before(expectedWallTime) {
@@ -139,7 +102,7 @@ func (p *pacer) reportStats(now, expectedWallTime time.Time) {
 			p.nextReport.Format(time.RFC3339),
 			now.Sub(p.nextReport).Seconds(),
 			p.lastRequestTime.Format(time.RFC3339),
-			currentRate,
+			p.timeline.RateAt(t),
 			p.requestCounter/int(p.ReportInterval.Seconds()))
 		p.nextReport = p.nextReport.Add(p.ReportInterval)
 		p.requestCounter = 0
@@ -149,6 +112,8 @@ func (p *pacer) reportStats(now, expectedWallTime time.Time) {
 
 // Format is [duration]@[rate] [duration]@[rate]..."
 // e.g. "5s@1 10m@2"
+// It returns at least one phase, each with a non-negative duration and a
+// positive, finite rate.
 func parsePhases(phasesStr string) ([]*phase, error) {
 	var phases []*phase
 
@@ -167,8 +132,18 @@ func parsePhases(phasesStr string) ([]*phase, error) {
 			return nil, err
 		}
 
+		if !validPhase(duration, rate) {
+			return nil, fmt.Errorf("invalid phase %q: duration must not be negative and rate must be positive", durationAtRate)
+		}
+
 		phases = append(phases, &phase{duration, rate})
 	}
 
 	return phases, nil
+}
+
+// validPhase reports whether a phase can be placed on the timeline: log time
+// must move forward, so the rate is positive and finite.
+func validPhase(duration time.Duration, rate float64) bool {
+	return duration >= 0 && rate > 0 && !math.IsInf(rate, 1)
 }

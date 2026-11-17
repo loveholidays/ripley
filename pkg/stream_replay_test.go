@@ -19,10 +19,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -129,4 +131,114 @@ func readResults(t *testing.T, name string) []Result {
 		results = append(results, res)
 	}
 	return results
+}
+
+// replayResults replays reqs at the given pace and returns the results.
+func replayResults(t *testing.T, pace string, reqs ...*Request) []Result {
+	t.Helper()
+	var input bytes.Buffer
+	encoder := json.NewEncoder(&input)
+	for _, req := range reqs {
+		if err := encoder.Encode(req); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inFile := filepath.Join(t.TempDir(), "input")
+	if err := os.WriteFile(inFile, input.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	in, err := os.Open(inFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.Create(filepath.Join(t.TempDir(), "output"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	oldIn, oldOut := os.Stdin, os.Stdout
+	os.Stdin, os.Stdout = in, out
+	code := Replay(pace, false, false, 10, false, 0, 10, 0, false, 0, false, "")
+	os.Stdin, os.Stdout = oldIn, oldOut
+	if code != 0 {
+		t.Fatalf("exit code = %d; want zero", code)
+	}
+
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var results []Result
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var res Result
+		if err := json.Unmarshal([]byte(line), &res); err != nil {
+			t.Fatal(err)
+		}
+		results = append(results, res)
+	}
+	return results
+}
+
+func TestReplaySessionsFollowLogTime(t *testing.T) {
+	url := serve(t, sseEvents)
+	timestamp := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
+
+	tests := map[string]struct {
+		pace     string
+		min, max time.Duration // bounds on the session's wall time
+	}{
+		// 2s of log at 10x is 200ms of wall time.
+		"10x": {"10s@10", 150 * time.Millisecond, time.Second},
+		// The first 100ms of wall time replays 1s of log at 10x; the other
+		// 1s of the session then runs at 1x, ending 1.1s in.
+		"spans a phase change": {"100ms@10 10s@1", time.Second, 1600 * time.Millisecond},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			results := replayResults(t, tc.pace, &Request{
+				Method: "GET", Url: url, Timestamp: timestamp, DisconnectAfter: Duration(2 * time.Second),
+			})
+			if len(results) != 1 {
+				t.Fatalf("got %d results; want 1", len(results))
+			}
+			res := results[0]
+			if !res.Disconnected || res.ErrorMsg != "" {
+				t.Fatalf("result = %+v; want an intentional disconnect", res)
+			}
+			if res.Latency < tc.min || res.Latency > tc.max {
+				t.Errorf("session lasted %v; want %v to %v", res.Latency, tc.min, tc.max)
+			}
+		})
+	}
+}
+
+// The replay must keep its schedule however long responses take: 50 requests
+// logged at once must all be open at the server together.
+func TestReplayDoesNotWaitForResponses(t *testing.T) {
+	srv := newBlockingServer(t)
+	const n = 50
+	timestamp := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
+	reqs := make([]*Request, n)
+	for i := range reqs {
+		reqs[i] = &Request{Method: "GET", Url: srv.URL, Timestamp: timestamp}
+	}
+
+	allOpen := make(chan bool, 1)
+	go func() {
+		deadline := time.Now().Add(5 * time.Second)
+		for srv.open.Load() < n && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		allOpen <- srv.open.Load() == n
+		close(srv.release)
+	}()
+
+	if results := replayResults(t, "10s@1", reqs...); len(results) != n {
+		t.Fatalf("got %d results; want %d", len(results), n)
+	}
+	if !<-allOpen {
+		t.Errorf("max open requests = %d; want all %d at once", srv.maxOpen.Load(), n)
+	}
 }

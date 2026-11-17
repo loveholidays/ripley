@@ -29,14 +29,14 @@ import (
 	"time"
 )
 
-func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, disableKeepAlives bool, printStatsInterval time.Duration, metricsServerEnable bool, metricsServerAddr string) int {
-	return ReplayWithMetricsConfig(phasesStr, silent, dryRun, timeout, strict, numWorkers, connections, maxConnections, disableKeepAlives, printStatsInterval, MetricsConfig{
+func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, maxInFlight, connections, maxConnections int, disableKeepAlives bool, printStatsInterval time.Duration, metricsServerEnable bool, metricsServerAddr string) int {
+	return ReplayWithMetricsConfig(phasesStr, silent, dryRun, timeout, strict, maxInFlight, connections, maxConnections, disableKeepAlives, printStatsInterval, MetricsConfig{
 		Enabled: metricsServerEnable,
 		Address: metricsServerAddr,
 	})
 }
 
-func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, disableKeepAlives bool, printStatsInterval time.Duration, metricsConfig MetricsConfig) int {
+func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int, strict bool, maxInFlight, connections, maxConnections int, disableKeepAlives bool, printStatsInterval time.Duration, metricsConfig MetricsConfig) int {
 	// Default exit code
 	var exitCode = 0
 	// Ensures we have handled all HTTP Request results before exiting
@@ -44,38 +44,43 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 	// Ensures result handler goroutine completes before closing results channel
 	var resultHandlerWG sync.WaitGroup
 
-	// Send requests for the HTTP client workers to pick up on this channel
+	// Send requests to the request runner on this channel
 	requests := make(chan *Request)
 
-	// HTTP client workers will send their results on this channel
+	// Requests send their results on this channel
 	results := make(chan *Result)
 
 	// Initialize metrics recorder (no-op if disabled)
-	metricsRecorder := NewMetricsRecorder(metricsConfig, numWorkers)
+	metricsRecorder := NewMetricsRecorder(metricsConfig, maxInFlight)
 	stopMonitoring := metricsRecorder.StartMonitoring(requests, results)
 	defer stopMonitoring()
 
 	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
-	pacer.ReportInterval = printStatsInterval
-
 	if err != nil {
 		panic(err)
 	}
+	pacer.ReportInterval = printStatsInterval
 
 	// Read Request JSONL input from STDIN. bufio.Reader.ReadBytes has no line
 	// length limit, unlike bufio.Scanner, so large request bodies are fine.
-	input := bufio.NewReader(os.Stdin)
+	// The buffer only sets how much is read per call to the OS.
+	input := bufio.NewReaderSize(os.Stdin, 1<<20)
 
-	// Start HTTP client goroutine pool
-	startClientWorkers(numWorkers, requests, results, dryRun, timeout, connections, maxConnections, disableKeepAlives)
-	pacer.start()
+	// Start running requests as they arrive
+	startRequestRunner(maxInFlight, requests, results, dryRun, timeout, connections, maxConnections, disableKeepAlives)
 
 	// Goroutine to handle the  HTTP client result
 	resultHandlerWG.Add(1)
 	go func() {
 		defer resultHandlerWG.Done()
-		for result := range results {
+		out := newLineWriter(os.Stdout)
+		defer func() { _ = out.Flush() }()
+		for {
+			result, ok := receiveOrFlush(results, out)
+			if !ok {
+				return
+			}
 			waitGroup.Done()
 
 			// If there's a panic elsewhere, this channel can return nil
@@ -92,7 +97,7 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 					panic(err)
 				}
 
-				fmt.Println(string(jsonResult))
+				_ = out.WriteLine(append(jsonResult, '\n'))
 			}
 		}
 	}()
@@ -124,18 +129,21 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 			continue
 		}
 
-		if pacer.isDone() {
+		// The pacer decides when each request is sent
+		wait, ok := pacer.schedule(req.Timestamp)
+		if !ok {
 			break
 		}
-
-		// The pacer decides how long to wait between requests
-		waitDuration := pacer.waitDuration(req.Timestamp)
-		time.Sleep(waitDuration)
+		if req.DisconnectAfter > 0 {
+			// The session ends where it ended in the log, mapped onto the wall clock.
+			req.disconnectAt = pacer.wall(req.Timestamp.Add(time.Duration(req.DisconnectAfter)))
+		}
+		time.Sleep(wait)
 		waitGroup.Add(1)
 		requests <- req
 	}
 
-	// Close requests channel to signal worker goroutines to stop
+	// Close requests channel to signal the request runner to stop
 	close(requests)
 
 	// Wait for all HTTP requests to complete

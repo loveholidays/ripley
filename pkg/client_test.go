@@ -92,9 +92,19 @@ func testClient(t testing.TB, timeout time.Duration) *http.Client {
 }
 
 func runRequest(client *http.Client, req *Request) *Result {
+	start := time.Now()
+	startSession(req, start)
 	results := make(chan *Result, 1)
-	executeRequest(client, req, time.Now(), results)
+	executeRequest(client, req, start, results)
 	return <-results
+}
+
+// startSession sets req's wall-clock deadline as a replay at @1 would: its
+// DisconnectAfter after start.
+func startSession(req *Request, start time.Time) {
+	if req.DisconnectAfter > 0 {
+		req.disconnectAt = start.Add(time.Duration(req.DisconnectAfter))
+	}
 }
 
 // get builds a GET request. A zero disconnectAfter makes an ordinary request.
@@ -132,9 +142,11 @@ func TestSessionDoesNotChangeOrdinaryRequestTimeout(t *testing.T) {
 	url := serve(t, sseEvents)
 	client := testClient(t, 50*time.Millisecond)
 	requests := []*Request{get(url, 200*time.Millisecond), get(url, 0)}
+	start := time.Now()
 	results := make(chan *Result, len(requests))
 	for _, req := range requests {
-		go executeRequest(client, req, time.Now(), results)
+		startSession(req, start)
+		go executeRequest(client, req, start, results)
 	}
 	for range requests {
 		res := <-results
@@ -217,9 +229,9 @@ func TestReplayHeadersAndRedirectBehavior(t *testing.T) {
 func TestDryRunDoesNotWaitForSessionDuration(t *testing.T) {
 	requests := make(chan *Request, 1)
 	results := make(chan *Result, 1)
-	requests <- &Request{DisconnectAfter: Duration(time.Hour)}
+	requests <- &Request{disconnectAt: time.Now().Add(time.Hour)}
 	close(requests)
-	doHttpRequest(testClient(t, time.Second), requests, results, true)
+	runRequests(testClient(t, time.Second), requests, results, true, nil)
 	if res := <-results; res.Disconnected || res.ErrorMsg != "" {
 		t.Fatalf("dry-run result = %+v; want no disconnect or error", res)
 	}

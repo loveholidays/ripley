@@ -19,7 +19,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"math"
 	"testing"
 	"time"
 )
@@ -74,70 +73,82 @@ func TestParseManyPhases(t *testing.T) {
 	}
 }
 
-func TestWaitDuration(t *testing.T) {
-	pacer, err := newPacer("30s@1")
-
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-
-	now := time.Now()
-	duration := pacer.waitDuration(now)
-
-	if duration > 0 {
-		t.Errorf("duration = %v; want 0 or negative", duration)
-	}
-
-	now = now.Add(2 * time.Second)
-	duration = pacer.waitDuration(now)
-	expected := 2 * time.Second
-
-	if !equalsWithinThreshold(duration, expected, 100*time.Microsecond) {
-		t.Errorf("duration = %v; want %v", duration, expected)
+func TestParsePhasesRejectsUnusableRates(t *testing.T) {
+	for _, pace := range []string{"1m@0", "1m@-1", "1m@NaN", "1m@Inf", "-1m@1"} {
+		if _, err := parsePhases(pace); err == nil {
+			t.Errorf("parsePhases(%q) succeeded; want an error", pace)
+		}
 	}
 }
 
-func TestWaitDuration10X(t *testing.T) {
-	pacer, err := newPacer("30s@10")
-
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
+func TestScheduleFollowsRate(t *testing.T) {
+	tests := map[string]struct {
+		pace string
+		gap  time.Duration // log time between two requests
+		want time.Duration // wall time between their sends
+	}{
+		"real time": {"30s@1", 2 * time.Second, 2 * time.Second},
+		"10x":       {"30s@10", time.Second, time.Second / 10},
+		"half":      {"30s@0.5", time.Second, 2 * time.Second},
 	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			p, err := newPacer(tc.pace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			logStart := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
 
-	now := time.Now()
-	duration := pacer.waitDuration(now)
-
-	if duration > 0 {
-		t.Errorf("duration = %v; want 0 or negative", duration)
-	}
-
-	now = now.Add(1 * time.Second)
-	duration = pacer.waitDuration(now)
-	expected := time.Second / 10
-
-	if !equalsWithinThreshold(duration, expected, 100*time.Microsecond) {
-		t.Errorf("duration = %v; want %v", duration, expected)
-	}
-}
-
-func TestPacerDoneOnLastPhaseElapsed(t *testing.T) {
-	pacer, err := newPacer("30s@10")
-
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-
-	if pacer.done {
-		t.Errorf("pacer.done = %v; want false", pacer.done)
-	}
-
-	pacer.onPhaseElapsed()
-
-	if !pacer.done {
-		t.Errorf("pacer.done = %v; want true", pacer.done)
+			if wait, ok := p.schedule(logStart); !ok || wait != 0 {
+				t.Fatalf("first wait = %v, %v; want 0", wait, ok)
+			}
+			// The wait is measured from a later now, so it is a little short.
+			wait, ok := p.schedule(logStart.Add(tc.gap))
+			if !ok || wait > tc.want || wait < tc.want-50*time.Millisecond {
+				t.Errorf("second wait = %v, %v; want just under %v", wait, ok, tc.want)
+			}
+		})
 	}
 }
 
-func equalsWithinThreshold(d1, d2, threshold time.Duration) bool {
-	return math.Abs(float64(d1-d2)) <= float64(threshold)
+func TestScheduleStopsAfterLastPhase(t *testing.T) {
+	p, err := newPacer("10s@1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logStart := time.Now()
+	if _, ok := p.schedule(logStart); !ok {
+		t.Fatal("first request not scheduled")
+	}
+	if _, ok := p.schedule(logStart.Add(11 * time.Second)); ok {
+		t.Error("request after the last phase was scheduled")
+	}
+}
+
+func TestScheduleStopsOncePaceIsOver(t *testing.T) {
+	p, err := newPacer("1ms@1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logStart := time.Now()
+	if _, ok := p.schedule(logStart); !ok {
+		t.Fatal("first request not scheduled")
+	}
+	time.Sleep(5 * time.Millisecond)
+	// Inside the pace in log time, but the replay has run out of wall time.
+	if _, ok := p.schedule(logStart); ok {
+		t.Error("request scheduled after the pace ended")
+	}
+}
+
+func BenchmarkPacerSchedule(b *testing.B) {
+	p, err := newPacer("1h@1")
+	if err != nil {
+		b.Fatal(err)
+	}
+	t := time.Now()
+	b.ReportAllocs()
+	for i := range b.N {
+		_, _ = p.schedule(t.Add(time.Duration(i)))
+	}
 }

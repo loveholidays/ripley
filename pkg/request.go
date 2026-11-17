@@ -39,12 +39,20 @@ type Request struct {
 	Timestamp time.Time         `json:"timestamp"`
 	Headers   map[string]string `json:"headers"`
 
-	// DisconnectAfter, when positive, cancels the request this long after
-	// execution starts, including connection setup and body consumption. It
-	// replaces the HTTP client's timeout for this request. If it expires
-	// first, Result.Disconnected is true and ErrorMsg is empty. Zero uses the
+	// DisconnectAfter, when positive, ends the request this long after its
+	// Timestamp, measured in log time so the session keeps its place in the
+	// replayed traffic: at a pace of @10, a 30s session lasts 3s of wall time,
+	// and one that spans a phase change follows both rates. The time covers
+	// queueing, connection setup and body consumption, and replaces the HTTP
+	// client's timeout for this request. If it expires first,
+	// Result.Disconnected is true and ErrorMsg is empty. Zero uses the
 	// ordinary client timeout; negative values are invalid.
 	DisconnectAfter Duration `json:"disconnectAfter,omitempty"`
+
+	// disconnectAt is the wall time at which the client ends the request. The
+	// replay loop sets it from DisconnectAfter through the pacer's timeline;
+	// the zero value means no session limit.
+	disconnectAt time.Time
 }
 
 // Duration is a time.Duration encoded in JSON as a Go duration string such

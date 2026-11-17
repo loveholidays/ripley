@@ -79,11 +79,12 @@ var (
 		[]string{"phase"},
 	)
 
-	// Worker pool size gauge
+	// Request concurrency limit gauge. The name predates the change from a
+	// worker pool to a goroutine per request and is kept for dashboards.
 	workerPoolSize = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "ripley_worker_pool_size",
-			Help: "Number of worker goroutines",
+			Help: "Maximum requests in flight (-workers); 0 means no limit",
 		},
 	)
 
@@ -130,7 +131,7 @@ type prometheusRecorder struct {
 type noopRecorder struct{}
 
 // NewMetricsRecorder creates a metrics recorder based on configuration
-func NewMetricsRecorder(config MetricsConfig, numWorkers int) MetricsRecorder {
+func NewMetricsRecorder(config MetricsConfig, maxInFlight int) MetricsRecorder {
 	if config.Enabled {
 		errChan := StartMetricsServer(config)
 
@@ -141,7 +142,7 @@ func NewMetricsRecorder(config MetricsConfig, numWorkers int) MetricsRecorder {
 			}
 		}()
 
-		SetWorkerPoolSize(numWorkers)
+		SetWorkerPoolSize(maxInFlight)
 		return &prometheusRecorder{
 			config:         config,
 			stopMonitoring: make(chan struct{}),
@@ -277,7 +278,7 @@ func RecordRequest(result *Result) {
 	}
 }
 
-// SetWorkerPoolSize sets the worker pool size metric
+// SetWorkerPoolSize sets the request concurrency limit metric
 func SetWorkerPoolSize(size int) {
 	workerPoolSize.Set(float64(size))
 }

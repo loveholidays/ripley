@@ -122,9 +122,10 @@ Disconnected requests count towards `ripley_requests_total`, but not towards
 `ripley_request_duration_seconds` or `ripley_response_status_total`: their
 length was set by the input rather than measured, and they may have no status.
 
-Silence is legal in SSE and does not terminate a session. A long-lived response
-occupies an existing worker, so increase `-workers` for the expected concurrent
-sessions.
+Silence is legal in SSE and does not terminate a session. Each request runs on
+its own goroutine, so long-lived responses never hold back the requests after
+them. `-workers` caps the requests in flight, and unlimited is the default;
+at a cap, the replay waits and falls behind its schedule.
 
 Ripley does not parse individual SSE events or automatically reconnect. Captured
 reconnections must appear as separate requests in the input. SSE does not require

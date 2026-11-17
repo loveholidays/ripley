@@ -37,7 +37,12 @@ type Result struct {
 	Disconnected bool `json:"disconnected,omitempty"`
 }
 
-func startClientWorkers(numWorkers int, requests <-chan *Request, results chan<- *Result, dryRun bool, timeout, connections, maxConnections int, disableKeepAlives bool) {
+// startRequestRunner runs each request from requests on its own goroutine,
+// like net/http's server runs each connection, so a slow or long-lived
+// response never delays the requests behind it. A positive maxInFlight caps
+// the requests running at once; at the cap, new requests wait for a running
+// one to finish, which holds back the replay. Zero or less means no cap.
+func startRequestRunner(maxInFlight int, requests <-chan *Request, results chan<- *Result, dryRun bool, timeout, connections, maxConnections int, disableKeepAlives bool) {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -50,20 +55,49 @@ func startClientWorkers(numWorkers int, requests <-chan *Request, results chan<-
 		},
 	}
 
-	for i := 0; i < numWorkers; i++ {
-		go doHttpRequest(client, requests, results, dryRun)
+	go runRequests(client, requests, results, dryRun, newInFlight(maxInFlight))
+}
+
+// runRequests starts a goroutine per request until requests is closed.
+func runRequests(client *http.Client, requests <-chan *Request, results chan<- *Result, dryRun bool, limit inFlight) {
+	for req := range requests {
+		limit.acquire()
+		go func() {
+			defer limit.release()
+			handleRequest(client, req, results, dryRun)
+		}()
 	}
 }
 
-func doHttpRequest(client *http.Client, requests <-chan *Request, results chan<- *Result, dryRun bool) {
-	for req := range requests {
-		latencyStart := time.Now()
+func handleRequest(client *http.Client, req *Request, results chan<- *Result, dryRun bool) {
+	latencyStart := time.Now()
+	if dryRun {
+		sendResult(req, &http.Response{}, latencyStart, "", results)
+		return
+	}
+	executeRequest(client, req, latencyStart, results)
+}
 
-		if dryRun {
-			sendResult(req, &http.Response{}, latencyStart, "", results)
-		} else {
-			executeRequest(client, req, latencyStart, results)
-		}
+// inFlight is a semaphore that caps how many requests run at once. A nil
+// inFlight imposes no cap.
+type inFlight chan struct{}
+
+func newInFlight(limit int) inFlight {
+	if limit <= 0 {
+		return nil
+	}
+	return make(inFlight, limit)
+}
+
+func (l inFlight) acquire() {
+	if l != nil {
+		l <- struct{}{}
+	}
+}
+
+func (l inFlight) release() {
+	if l != nil {
+		<-l
 	}
 }
 
@@ -74,9 +108,9 @@ func executeRequest(client *http.Client, req *Request, latencyStart time.Time, r
 		return
 	}
 
-	if req.DisconnectAfter > 0 {
+	if !req.disconnectAt.IsZero() {
 		var cancel context.CancelFunc
-		client, httpReq, cancel = withSession(client, httpReq, latencyStart.Add(time.Duration(req.DisconnectAfter)))
+		client, httpReq, cancel = withSession(client, httpReq, req.disconnectAt)
 		defer cancel()
 	}
 
@@ -87,7 +121,7 @@ func executeRequest(client *http.Client, req *Request, latencyStart time.Time, r
 }
 
 // withSession bounds req by deadline instead of client.Timeout. It returns a
-// copy of client so the shared client, used concurrently by other workers, is
+// copy of client so the shared client, used concurrently by other requests, is
 // unchanged; the copy shares the transport and its connection pool.
 func withSession(client *http.Client, req *http.Request, deadline time.Time) (*http.Client, *http.Request, context.CancelFunc) {
 	ctx, cancel := context.WithDeadline(req.Context(), deadline)
