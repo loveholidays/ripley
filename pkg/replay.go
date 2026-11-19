@@ -60,11 +60,10 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 
 	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
-	pacer.ReportInterval = printStatsInterval
-
 	if err != nil {
 		panic(err)
 	}
+	pacer.ReportInterval = printStatsInterval
 
 	// Read Request JSONL input from STDIN
 	input := bufio.NewReaderSize(os.Stdin, 32*1024*1024)
