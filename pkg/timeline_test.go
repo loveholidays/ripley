@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -87,5 +88,41 @@ func TestTimelineWallDoesNotAllocate(t *testing.T) {
 	})
 	if allocs != 0 {
 		t.Errorf("wall allocates %v times per call; want 0", allocs)
+	}
+}
+
+// Converting an out-of-range float to an integer is implementation-defined in
+// Go: amd64 gives the most negative value. Extreme rates must still map log
+// time forwards, past the end of the pace, on every architecture.
+func TestTimelineExtremeRatesSaturate(t *testing.T) {
+	logStart := time.Date(2021, 11, 8, 18, 0, 0, 0, time.UTC)
+	wallStart := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	slow := newTimeline([]*phase{{time.Minute, 1e-300}}, logStart, wallStart)
+	if got := slow.wall(logStart.Add(time.Second)); !got.After(slow.end) {
+		t.Errorf("at 1e-300, 1s of log maps to %v; want after the end, %v", got, slow.end)
+	}
+
+	fast := newTimeline([]*phase{{time.Minute, 1e300}, {time.Minute, 1}}, logStart, wallStart)
+	if got := fast.segments[1].log; got.Before(logStart) {
+		t.Errorf("at 1e300, the next phase starts at log time %v; want after %v", got, logStart)
+	}
+}
+
+func TestDurationOfSaturates(t *testing.T) {
+	tests := []struct {
+		in   float64
+		want time.Duration
+	}{
+		{1.5e9, 1500 * time.Millisecond},
+		{1e304, math.MaxInt64},
+		{math.Inf(1), math.MaxInt64},
+		{-1e304, math.MinInt64},
+		{math.Inf(-1), math.MinInt64},
+	}
+	for _, tc := range tests {
+		if got := durationOf(tc.in); got != tc.want {
+			t.Errorf("durationOf(%g) = %v; want %v", tc.in, got, tc.want)
+		}
 	}
 }

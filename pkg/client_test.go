@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -259,5 +260,25 @@ func TestOrdinaryResultOmitsDisconnectField(t *testing.T) {
 	}
 	if strings.Contains(string(data), "disconnected") {
 		t.Fatalf("ordinary JSON result includes disconnected: %s", data)
+	}
+}
+
+// A session whose deadline passed while it waited for -workers was never sent,
+// so it is an error, not an intentional disconnect.
+func TestSessionMissedInQueueIsAnError(t *testing.T) {
+	var received atomic.Int64
+	url := serve(t, func(w http.ResponseWriter, r *http.Request) { received.Add(1) })
+	start := time.Now()
+	req := &Request{Method: "GET", Url: url, DisconnectAfter: Duration(time.Second), disconnectAt: start.Add(-time.Millisecond)}
+
+	res := executeRequest(testClient(t, time.Second), req, start)
+	if got := outcomeOf(res); got != (outcome{failed: true}) {
+		t.Errorf("result = %+v; want a failure", res)
+	}
+	if !strings.Contains(res.ErrorMsg, "-workers") {
+		t.Errorf("ErrorMsg = %q; want it to point at -workers", res.ErrorMsg)
+	}
+	if n := received.Load(); n != 0 {
+		t.Errorf("server received %d requests; want none", n)
 	}
 }

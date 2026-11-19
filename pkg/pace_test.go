@@ -73,8 +73,8 @@ func TestParseManyPhases(t *testing.T) {
 	}
 }
 
-func TestParsePhasesRejectsUnusableRates(t *testing.T) {
-	for _, pace := range []string{"1m@0", "1m@-1", "1m@NaN", "1m@Inf", "-1m@1"} {
+func TestParsePhasesRejectsInvalidPhases(t *testing.T) {
+	for _, pace := range []string{"1m@0", "1m@-1", "1m@NaN", "1m@Inf", "-1m@1", "10s", "10s@1  5s@2", ""} {
 		if _, err := parsePhases(pace); err == nil {
 			t.Errorf("parsePhases(%q) succeeded; want an error", pace)
 		}
@@ -158,6 +158,21 @@ func TestScheduleStopsOncePaceIsOver(t *testing.T) {
 	// Inside the pace in log time, but the replay has run out of wall time.
 	if _, ok := p.schedule(at(logStart)); ok {
 		t.Error("request scheduled after the pace ended")
+	}
+}
+
+// Report intervals under a second used to divide by zero.
+func TestReportStatsWithSubSecondInterval(t *testing.T) {
+	p, err := newPacer("1m@1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.ReportInterval = 100 * time.Millisecond
+	logStart := time.Now()
+	for i := range 3 {
+		if _, ok := p.schedule(at(logStart.Add(time.Duration(i) * 150 * time.Millisecond))); !ok {
+			t.Fatal("request not scheduled")
+		}
 	}
 }
 

@@ -18,7 +18,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 package ripley
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 // timeline maps log time, the timestamps in the input, onto wall time. Once
 // the first request anchors the two clocks, the pace phases fix the mapping:
@@ -42,7 +45,7 @@ func newTimeline(phases []*phase, logStart, wallStart time.Time) timeline {
 	log, wall := logStart, wallStart
 	for i, p := range phases {
 		segments[i] = segment{log: log, wall: wall, rate: p.rate}
-		log = log.Add(time.Duration(float64(p.duration) * p.rate))
+		log = log.Add(durationOf(float64(p.duration) * p.rate))
 		wall = wall.Add(p.duration)
 	}
 	return timeline{segments: segments, end: wall}
@@ -53,7 +56,7 @@ func newTimeline(phases []*phase, logStart, wallStart time.Time) timeline {
 // to wall times before it.
 func (tl timeline) wall(t time.Time) time.Time {
 	s := tl.segmentAt(t)
-	return s.wall.Add(time.Duration(float64(t.Sub(s.log)) / s.rate))
+	return s.wall.Add(durationOf(float64(t.Sub(s.log)) / s.rate))
 }
 
 // rateAt returns the replay rate in force at log time t.
@@ -73,4 +76,17 @@ func (tl timeline) segmentAt(t time.Time) segment {
 		s = next
 	}
 	return s
+}
+
+// durationOf converts nanoseconds to a Duration, saturating at its limits.
+// A plain conversion of an out-of-range float is implementation-defined in Go,
+// and extreme pace rates can produce one.
+func durationOf(ns float64) time.Duration {
+	switch {
+	case ns >= math.MaxInt64: // float64(math.MaxInt64) rounds up to 2^63
+		return math.MaxInt64
+	case ns <= math.MinInt64:
+		return math.MinInt64
+	}
+	return time.Duration(ns)
 }

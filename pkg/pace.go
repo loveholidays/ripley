@@ -102,7 +102,7 @@ func (p *pacer) reportStats(now, expectedWallTime, t time.Time) {
 			now.Sub(p.nextReport).Seconds(),
 			p.lastRequestTime.Format(time.RFC3339),
 			p.timeline.rateAt(t),
-			p.requestCounter/int(p.ReportInterval.Seconds()))
+			int(float64(p.requestCounter)/p.ReportInterval.Seconds()))
 		p.nextReport = p.nextReport.Add(p.ReportInterval)
 		p.requestCounter = 0
 	}
@@ -117,15 +117,18 @@ func parsePhases(phasesStr string) ([]*phase, error) {
 	var phases []*phase
 
 	for _, durationAtRate := range strings.Split(phasesStr, " ") {
-		tokens := strings.Split(durationAtRate, "@")
+		durationStr, rateStr, ok := strings.Cut(durationAtRate, "@")
+		if !ok {
+			return nil, fmt.Errorf("invalid phase %q: want [duration]@[rate], such as 10s@1", durationAtRate)
+		}
 
-		duration, err := time.ParseDuration(tokens[0])
+		duration, err := time.ParseDuration(durationStr)
 
 		if err != nil {
 			return nil, err
 		}
 
-		rate, err := strconv.ParseFloat(tokens[1], 64)
+		rate, err := strconv.ParseFloat(rateStr, 64)
 
 		if err != nil {
 			return nil, err

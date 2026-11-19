@@ -108,7 +108,9 @@ A positive `disconnectAfter` is measured in log time from the request's
 `timestamp`, so a session keeps its place in the replayed traffic: at `@10`, a
 `"30s"` session lasts 3 seconds, and one that spans a phase change follows both
 rates. It covers any wait for `-workers`, connection setup and response-body
-consumption, and replaces `-timeout` for that request only. Zero or omitted `disconnectAfter` retains the existing client
+consumption, and replaces `-timeout` for that request only. A session whose
+time runs out while it waits for `-workers` is never sent, and is reported as an
+error. Zero or omitted `disconnectAfter` retains the existing client
 timeout; negative durations are invalid.
 
 When the session deadline expires first, the result has `"disconnected": true`

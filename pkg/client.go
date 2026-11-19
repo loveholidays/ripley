@@ -86,6 +86,17 @@ func doRequest(client *http.Client, req *Request, dryRun bool) *Result {
 	return executeRequest(client, req, start)
 }
 
+var (
+	// errSessionEnded is the cause recorded when a session reaches its
+	// deadline, which is how an intentional disconnect is told apart from
+	// other failures.
+	errSessionEnded = errors.New("session ended")
+
+	// errSessionMissed reports a session whose deadline passed while it
+	// waited to start, so it was never sent.
+	errSessionMissed = errors.New("session ended before the request was sent; raise or remove -workers")
+)
+
 func executeRequest(client *http.Client, req *Request, start time.Time) *Result {
 	httpReq, err := req.httpRequest()
 	if err != nil {
@@ -93,6 +104,9 @@ func executeRequest(client *http.Client, req *Request, start time.Time) *Result 
 	}
 
 	if !req.disconnectAt.IsZero() {
+		if !start.Before(req.disconnectAt) {
+			return &Result{Request: req, Latency: time.Since(start), ErrorMsg: errSessionMissed.Error()}
+		}
 		var cancel context.CancelFunc
 		client, httpReq, cancel = withSession(client, httpReq, req.disconnectAt)
 		defer cancel()
@@ -108,7 +122,7 @@ func executeRequest(client *http.Client, req *Request, start time.Time) *Result 
 // copy of client so the shared client, used concurrently by other requests, is
 // unchanged; the copy shares the transport and its connection pool.
 func withSession(client *http.Client, req *http.Request, deadline time.Time) (*http.Client, *http.Request, context.CancelFunc) {
-	ctx, cancel := context.WithDeadline(req.Context(), deadline)
+	ctx, cancel := context.WithDeadlineCause(req.Context(), deadline, errSessionEnded)
 	session := *client
 	session.Timeout = 0
 	return &session, req.WithContext(ctx), cancel
@@ -142,8 +156,8 @@ func classify(ctx context.Context, res *Result, err error) {
 	}
 }
 
-// sessionEnded reports whether ctx hit its deadline. Only withSession sets a
-// deadline on the request context; client.Timeout fails requests separately.
+// sessionEnded reports whether ctx ended because its session deadline, set by
+// withSession, was reached.
 func sessionEnded(ctx context.Context) bool {
-	return errors.Is(ctx.Err(), context.DeadlineExceeded)
+	return errors.Is(context.Cause(ctx), errSessionEnded)
 }
