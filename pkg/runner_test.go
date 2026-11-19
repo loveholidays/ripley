@@ -19,11 +19,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -65,10 +63,11 @@ func newBlockingServer(t *testing.T) *blockingServer {
 	return s
 }
 
-// runAll sends n requests to s through runRequests, capped by limit. Once at
+// runAll sends n requests to s through runRequests, capped by limit if it is
+// positive. Once at
 // least want requests are open at once, it waits a little longer for any extra
 // request to slip through, then releases them all and waits for every result.
-func (s *blockingServer) runAll(t *testing.T, n int, limit inFlight, want int64) {
+func (s *blockingServer) runAll(t *testing.T, n, limit int, want int64) {
 	t.Helper()
 	client := testClient(t, 10*time.Second)
 	client.Transport = &http.Transport{MaxIdleConnsPerHost: n}
@@ -116,67 +115,14 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 func TestRunRequestsDoesNotWaitForResponses(t *testing.T) {
 	srv := newBlockingServer(t)
 	const n = 200
-	srv.runAll(t, n, nil, n)
+	srv.runAll(t, n, 0, n)
 }
 
 func TestInFlightCapsConcurrentRequests(t *testing.T) {
 	srv := newBlockingServer(t)
 	const limit = 3
-	srv.runAll(t, 10, newInFlight(limit), limit)
+	srv.runAll(t, 10, limit, limit)
 	if got := srv.maxOpen.Load(); got != limit {
 		t.Errorf("max open requests = %d; want %d", got, limit)
-	}
-}
-
-// writeRecorder records each call to Write.
-type writeRecorder struct{ writes []string }
-
-func (w *writeRecorder) Write(p []byte) (int, error) {
-	w.writes = append(w.writes, string(p))
-	return len(p), nil
-}
-
-func TestLineWriterWritesOnlyWholeLines(t *testing.T) {
-	var rec writeRecorder
-	lw := newLineWriter(&rec)
-	var want strings.Builder
-	for _, size := range []int{10, 40 << 10, 30 << 10, 200 << 10, 5} { // some past the 64KB buffer
-		line := strings.Repeat("x", size) + "\n"
-		want.WriteString(line)
-		if err := lw.WriteLine([]byte(line)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := lw.Flush(); err != nil {
-		t.Fatal(err)
-	}
-
-	for i, w := range rec.writes {
-		if !strings.HasSuffix(w, "\n") {
-			t.Errorf("write %d of %d ends mid-line", i+1, len(rec.writes))
-		}
-	}
-	if got := strings.Join(rec.writes, ""); got != want.String() {
-		t.Errorf("output differs from the lines written")
-	}
-}
-
-func TestReceiveOrFlushHoldsOutputOnlyWhileBusy(t *testing.T) {
-	var out bytes.Buffer
-	lw := newLineWriter(&out)
-	results := make(chan *Result, 1)
-
-	_ = lw.WriteLine([]byte("first\n"))
-	results <- &Result{}
-	if _, ok := receiveOrFlush(results, lw); !ok || out.Len() != 0 {
-		t.Fatalf("flushed %q with a result waiting; want the line held", out.String())
-	}
-
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		results <- &Result{}
-	}()
-	if _, ok := receiveOrFlush(results, lw); !ok || out.String() != "first\n" {
-		t.Fatalf("output = %q after waiting; want the line flushed while idle", out.String())
 	}
 }

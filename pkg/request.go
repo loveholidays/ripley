@@ -19,10 +19,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -86,7 +86,7 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 }
 
 func (r *Request) httpRequest() (*http.Request, error) {
-	req, err := http.NewRequest(r.Method, r.Url, bytes.NewReader([]byte(r.Body)))
+	req, err := http.NewRequest(r.Method, r.Url, strings.NewReader(r.Body))
 
 	if err != nil {
 		return nil, err

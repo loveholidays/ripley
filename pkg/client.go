@@ -38,10 +38,10 @@ type Result struct {
 }
 
 // startRequestRunner runs each request from requests on its own goroutine,
-// like net/http's server runs each connection, so a slow or long-lived
-// response never delays the requests behind it. A positive maxInFlight caps
-// the requests running at once; at the cap, new requests wait for a running
-// one to finish, which holds back the replay. Zero or less means no cap.
+// as net/http's server runs each connection, so a slow or long-lived response
+// never delays the requests behind it. A positive maxInFlight caps the
+// requests running at once; at the cap, the next request waits for one to
+// finish, which holds back the replay.
 func startRequestRunner(maxInFlight int, requests <-chan *Request, results chan<- *Result, dryRun bool, timeout, connections, maxConnections int, disableKeepAlives bool) {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
@@ -55,57 +55,41 @@ func startRequestRunner(maxInFlight int, requests <-chan *Request, results chan<
 		},
 	}
 
-	go runRequests(client, requests, results, dryRun, newInFlight(maxInFlight))
+	go runRequests(client, requests, results, dryRun, maxInFlight)
 }
 
-// runRequests starts a goroutine per request until requests is closed.
-func runRequests(client *http.Client, requests <-chan *Request, results chan<- *Result, dryRun bool, limit inFlight) {
+// runRequests starts a goroutine per request until requests is closed,
+// with at most maxInFlight running at once if it is positive.
+func runRequests(client *http.Client, requests <-chan *Request, results chan<- *Result, dryRun bool, maxInFlight int) {
+	var running chan struct{} // a semaphore; nil means no cap
+	if maxInFlight > 0 {
+		running = make(chan struct{}, maxInFlight)
+	}
 	for req := range requests {
-		limit.acquire()
+		if running != nil {
+			running <- struct{}{}
+		}
 		go func() {
-			defer limit.release()
-			handleRequest(client, req, results, dryRun)
+			results <- doRequest(client, req, dryRun)
+			if running != nil {
+				<-running
+			}
 		}()
 	}
 }
 
-func handleRequest(client *http.Client, req *Request, results chan<- *Result, dryRun bool) {
-	latencyStart := time.Now()
+func doRequest(client *http.Client, req *Request, dryRun bool) *Result {
+	start := time.Now()
 	if dryRun {
-		sendResult(req, &http.Response{}, latencyStart, "", results)
-		return
+		return &Result{Request: req, Latency: time.Since(start)}
 	}
-	executeRequest(client, req, latencyStart, results)
+	return executeRequest(client, req, start)
 }
 
-// inFlight is a semaphore that caps how many requests run at once. A nil
-// inFlight imposes no cap.
-type inFlight chan struct{}
-
-func newInFlight(limit int) inFlight {
-	if limit <= 0 {
-		return nil
-	}
-	return make(inFlight, limit)
-}
-
-func (l inFlight) acquire() {
-	if l != nil {
-		l <- struct{}{}
-	}
-}
-
-func (l inFlight) release() {
-	if l != nil {
-		<-l
-	}
-}
-
-func executeRequest(client *http.Client, req *Request, latencyStart time.Time, results chan<- *Result) {
+func executeRequest(client *http.Client, req *Request, start time.Time) *Result {
 	httpReq, err := req.httpRequest()
 	if err != nil {
-		sendResult(req, &http.Response{}, latencyStart, err.Error(), results)
-		return
+		return &Result{Request: req, Latency: time.Since(start), ErrorMsg: err.Error()}
 	}
 
 	if !req.disconnectAt.IsZero() {
@@ -115,9 +99,9 @@ func executeRequest(client *http.Client, req *Request, latencyStart time.Time, r
 	}
 
 	status, err := discardResponse(client, httpReq)
-	res := &Result{Request: req, Latency: time.Since(latencyStart), StatusCode: status}
+	res := &Result{Request: req, Latency: time.Since(start), StatusCode: status}
 	classify(httpReq.Context(), res, err)
-	results <- res
+	return res
 }
 
 // withSession bounds req by deadline instead of client.Timeout. It returns a
@@ -162,9 +146,4 @@ func classify(ctx context.Context, res *Result, err error) {
 // deadline on the request context; client.Timeout fails requests separately.
 func sessionEnded(ctx context.Context) bool {
 	return errors.Is(ctx.Err(), context.DeadlineExceeded)
-}
-
-func sendResult(req *Request, resp *http.Response, latencyStart time.Time, err string, results chan<- *Result) {
-	latency := time.Since(latencyStart)
-	results <- &Result{StatusCode: resp.StatusCode, Latency: latency, Request: req, ErrorMsg: err}
 }

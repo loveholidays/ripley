@@ -131,7 +131,7 @@ type prometheusRecorder struct {
 type noopRecorder struct{}
 
 // NewMetricsRecorder creates a metrics recorder based on configuration
-func NewMetricsRecorder(config MetricsConfig, maxInFlight int) MetricsRecorder {
+func NewMetricsRecorder(config MetricsConfig, numWorkers int) MetricsRecorder {
 	if config.Enabled {
 		errChan := StartMetricsServer(config)
 
@@ -142,7 +142,7 @@ func NewMetricsRecorder(config MetricsConfig, maxInFlight int) MetricsRecorder {
 			}
 		}()
 
-		SetWorkerPoolSize(maxInFlight)
+		SetWorkerPoolSize(numWorkers)
 		return &prometheusRecorder{
 			config:         config,
 			stopMonitoring: make(chan struct{}),

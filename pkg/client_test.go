@@ -94,9 +94,7 @@ func testClient(t testing.TB, timeout time.Duration) *http.Client {
 func runRequest(client *http.Client, req *Request) *Result {
 	start := time.Now()
 	startSession(req, start)
-	results := make(chan *Result, 1)
-	executeRequest(client, req, start, results)
-	return <-results
+	return executeRequest(client, req, start)
 }
 
 // startSession sets req's wall-clock deadline as a replay at @1 would: its
@@ -146,7 +144,7 @@ func TestSessionDoesNotChangeOrdinaryRequestTimeout(t *testing.T) {
 	results := make(chan *Result, len(requests))
 	for _, req := range requests {
 		startSession(req, start)
-		go executeRequest(client, req, start, results)
+		go func() { results <- executeRequest(client, req, start) }()
 	}
 	for range requests {
 		res := <-results
@@ -231,7 +229,7 @@ func TestDryRunDoesNotWaitForSessionDuration(t *testing.T) {
 	results := make(chan *Result, 1)
 	requests <- &Request{disconnectAt: time.Now().Add(time.Hour)}
 	close(requests)
-	runRequests(testClient(t, time.Second), requests, results, true, nil)
+	runRequests(testClient(t, time.Second), requests, results, true, 0)
 	if res := <-results; res.Disconnected || res.ErrorMsg != "" {
 		t.Fatalf("dry-run result = %+v; want no disconnect or error", res)
 	}
@@ -245,12 +243,10 @@ func BenchmarkOrdinaryRequest(b *testing.B) {
 	b.Cleanup(srv.Close)
 	client := testClient(b, 10*time.Second)
 	req := &Request{Method: "GET", Url: srv.URL}
-	results := make(chan *Result, 1)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		executeRequest(client, req, time.Now(), results)
-		if res := <-results; res.ErrorMsg != "" {
+		if res := executeRequest(client, req, time.Now()); res.ErrorMsg != "" {
 			b.Fatal(res.ErrorMsg)
 		}
 	}

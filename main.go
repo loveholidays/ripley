@@ -41,7 +41,7 @@ func main() {
 	strict := flag.Bool("strict", false, "Panic on bad input")
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to `file` before exit")
-	maxInFlight := flag.Int("workers", 0, "Max requests in flight; at the limit, replay waits (default unlimited)")
+	numWorkers := flag.Int("workers", 0, "Max requests in flight; at the limit, replay waits (default unlimited)")
 	metricsServerEnable := flag.Bool("metricsServerEnable", false, "Enable Prometheus metrics server on /metrics endpoint")
 	metricsServerAddr := flag.String("metricsServerAddr", "0.0.0.0:8081", "Metrics server listen address")
 	pushgatewayURL := flag.String("pushgateway-url", "", "Push Prometheus metrics to this Pushgateway URL")
@@ -97,7 +97,7 @@ When 0 (default) or negative, reporting is switched off.
 		defer pprof.StopCPUProfile()
 	}
 
-	exitCode = ripley.ReplayWithMetricsConfig(*paceStr, *silent, *dryRun, *timeout, *strict, *maxInFlight, *connections, *maxConnections, *disableKeepAlives, *printStatsInterval, ripley.MetricsConfig{
+	exitCode = ripley.ReplayWithMetricsConfig(*paceStr, *silent, *dryRun, *timeout, *strict, *numWorkers, *connections, *maxConnections, *disableKeepAlives, *printStatsInterval, ripley.MetricsConfig{
 		Enabled:          *metricsServerEnable,
 		Address:          *metricsServerAddr,
 		PushgatewayURL:   *pushgatewayURL,

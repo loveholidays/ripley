@@ -104,9 +104,11 @@ SSE sessions are ordinary HTTP requests: supply the captured headers and an opti
 {"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","headers":{"Accept":"text/event-stream","Last-Event-ID":"42"},"disconnectAfter":"5m"}
 ```
 
-A positive `disconnectAfter` starts when request execution begins and covers
-connection setup and response-body consumption. It replaces `-timeout` for that
-request only. Zero or omitted `disconnectAfter` retains the existing client
+A positive `disconnectAfter` is measured in log time from the request's
+`timestamp`, so a session keeps its place in the replayed traffic: at `@10`, a
+`"30s"` session lasts 3 seconds, and one that spans a phase change follows both
+rates. It covers any wait for `-workers`, connection setup and response-body
+consumption, and replaces `-timeout` for that request only. Zero or omitted `disconnectAfter` retains the existing client
 timeout; negative durations are invalid.
 
 When the session deadline expires first, the result has `"disconnected": true`
@@ -139,8 +141,6 @@ the stream itself after 10 seconds. Then:
 go build -o ripley main.go
 printf '%s\n' '{"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","headers":{"Accept":"text/event-stream"},"disconnectAfter":"5s"}' | ./ripley
 ```
-
-The existing replay functions, CLI flags, and worker pool are unchanged.
 
 ## Metrics and profiling
 

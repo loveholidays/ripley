@@ -43,15 +43,15 @@ func TestTimelineWall(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := tl.Wall(logStart.Add(tc.log)).Sub(wallStart)
+			got := tl.wall(logStart.Add(tc.log)).Sub(wallStart)
 			if got != tc.wall {
-				t.Errorf("Wall(start+%v) = start+%v; want start+%v", tc.log, got, tc.wall)
+				t.Errorf("wall(start+%v) = start+%v; want start+%v", tc.log, got, tc.wall)
 			}
 		})
 	}
 
-	if got := tl.End().Sub(wallStart); got != 20*time.Second {
-		t.Errorf("End = start+%v; want start+20s", got)
+	if got := tl.end.Sub(wallStart); got != 20*time.Second {
+		t.Errorf("end = start+%v; want start+20s", got)
 	}
 }
 
@@ -63,7 +63,7 @@ func TestTimelineSessionSpansPhases(t *testing.T) {
 	tl := newTimeline([]*phase{{time.Second, 10}, {time.Minute, 1}}, logStart, wallStart)
 
 	// 30s in the log: 10s pass in the first wall second, the other 20s at 1x.
-	end := tl.Wall(logStart.Add(30 * time.Second))
+	end := tl.wall(logStart.Add(30 * time.Second))
 	if got := end.Sub(wallStart); got != 21*time.Second {
 		t.Errorf("session lasts %v of wall time; want 21s", got)
 	}
@@ -74,8 +74,8 @@ func TestTimelineZeroLengthPhase(t *testing.T) {
 	wallStart := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 	tl := newTimeline([]*phase{{0, 5}, {10 * time.Second, 1}}, logStart, wallStart)
 
-	if got := tl.Wall(logStart.Add(time.Second)).Sub(wallStart); got != time.Second {
-		t.Errorf("Wall = start+%v; want the 1x phase to apply: start+1s", got)
+	if got := tl.wall(logStart.Add(time.Second)).Sub(wallStart); got != time.Second {
+		t.Errorf("wall = start+%v; want the 1x phase to apply: start+1s", got)
 	}
 }
 
@@ -83,9 +83,9 @@ func TestTimelineWallDoesNotAllocate(t *testing.T) {
 	logStart := time.Now()
 	tl := newTimeline([]*phase{{time.Minute, 2}, {time.Minute, 4}}, logStart, logStart)
 	allocs := testing.AllocsPerRun(100, func() {
-		_ = tl.Wall(logStart.Add(90 * time.Second))
+		_ = tl.wall(logStart.Add(90 * time.Second))
 	})
 	if allocs != 0 {
-		t.Errorf("Wall allocates %v times per call; want 0", allocs)
+		t.Errorf("wall allocates %v times per call; want 0", allocs)
 	}
 }

@@ -36,7 +36,7 @@ This file provides guidance to AI coding agents when working with code in this r
 - `pkg/replay.go`: Core replay orchestrator that coordinates the entire process
 - `pkg/request.go`: HTTP request structures and validation
 - `pkg/pace.go`: Rate pacing engine with support for multiple phases
-- `pkg/client.go`: HTTP client worker pool and request execution
+- `pkg/client.go`: Runs each request on its own goroutine and executes it
 - `pkg/metrics.go`: Prometheus metrics recording and HTTP server (`/metrics` endpoint)
 
 **Data Flow:**

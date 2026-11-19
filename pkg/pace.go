@@ -54,31 +54,30 @@ func newPacer(phasesStr string) (*pacer, error) {
 	return &pacer{phases: phases}, nil
 }
 
-// schedule returns how long to wait before sending a request logged at t:
-// until its place on the timeline, or zero or less if that has passed. It
-// returns false once the pace is over, or if the request falls after it. The
-// first call anchors the timeline, so the first request is sent at once.
-func (p *pacer) schedule(t time.Time) (time.Duration, bool) {
-	now := time.Now()
+// schedule returns how long to wait before sending req: until its place on
+// the timeline, or zero or less if that has passed. It returns false once the
+// pace is over, or if req falls after it. The first call anchors the
+// timeline, so the first request is sent at once.
+//
+// A session ends where it ended in the log, so schedule also sets
+// req.disconnectAt from DisconnectAfter, mapped onto the wall clock.
+func (p *pacer) schedule(req *Request) (time.Duration, bool) {
+	t, now := req.Timestamp, time.Now()
 	if !p.anchored {
 		p.anchor(t, now)
 	}
 
-	send := p.timeline.Wall(t)
-	end := p.timeline.End()
-	if now.After(end) || send.After(end) {
+	send := p.timeline.wall(t)
+	if now.After(p.timeline.end) || send.After(p.timeline.end) {
 		return 0, false
+	}
+	if req.DisconnectAfter > 0 {
+		req.disconnectAt = p.timeline.wall(t.Add(time.Duration(req.DisconnectAfter)))
 	}
 
 	p.reportStats(now, send, t)
 	p.lastRequestTime = t
 	return send.Sub(now), true
-}
-
-// wall maps log time t onto the wall clock, such as the moment a session that
-// ends at t in the log should end in the replay. Call it only after schedule.
-func (p *pacer) wall(t time.Time) time.Time {
-	return p.timeline.Wall(t)
 }
 
 func (p *pacer) anchor(logStart, wallStart time.Time) {
@@ -102,7 +101,7 @@ func (p *pacer) reportStats(now, expectedWallTime, t time.Time) {
 			p.nextReport.Format(time.RFC3339),
 			now.Sub(p.nextReport).Seconds(),
 			p.lastRequestTime.Format(time.RFC3339),
-			p.timeline.RateAt(t),
+			p.timeline.rateAt(t),
 			p.requestCounter/int(p.ReportInterval.Seconds()))
 		p.nextReport = p.nextReport.Add(p.ReportInterval)
 		p.requestCounter = 0

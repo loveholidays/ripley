@@ -48,22 +48,17 @@ func newTimeline(phases []*phase, logStart, wallStart time.Time) timeline {
 	return timeline{segments: segments, end: wall}
 }
 
-// Wall returns the wall time at which log time t is replayed. Log times past
+// wall returns the wall time at which log time t is replayed. Log times past
 // the last phase continue at its rate, and log times before the anchor map
 // to wall times before it.
-func (tl timeline) Wall(t time.Time) time.Time {
+func (tl timeline) wall(t time.Time) time.Time {
 	s := tl.segmentAt(t)
 	return s.wall.Add(time.Duration(float64(t.Sub(s.log)) / s.rate))
 }
 
-// RateAt returns the replay rate in force at log time t.
-func (tl timeline) RateAt(t time.Time) float64 {
+// rateAt returns the replay rate in force at log time t.
+func (tl timeline) rateAt(t time.Time) float64 {
 	return tl.segmentAt(t).rate
-}
-
-// End returns the wall time at which the last phase finishes.
-func (tl timeline) End() time.Time {
-	return tl.end
 }
 
 // segmentAt returns the last segment starting at or before log time t, or

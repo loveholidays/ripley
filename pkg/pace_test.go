@@ -111,10 +111,10 @@ func secondWait(t *testing.T, pace string, gap time.Duration) time.Duration {
 		t.Fatal(err)
 	}
 	logStart := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
-	if wait, ok := p.schedule(logStart); !ok || wait != 0 {
+	if wait, ok := p.schedule(at(logStart)); !ok || wait != 0 {
 		t.Fatalf("first wait = %v, %v; want 0", wait, ok)
 	}
-	wait, ok := p.schedule(logStart.Add(gap))
+	wait, ok := p.schedule(at(logStart.Add(gap)))
 	if !ok {
 		t.Fatal("second request not scheduled")
 	}
@@ -126,16 +126,21 @@ func justUnder(got, want, slack time.Duration) bool {
 	return got <= want && got > want-slack
 }
 
+// justOver reports whether got is at least want and less than slack above it.
+func justOver(got, want, slack time.Duration) bool {
+	return got >= want && got < want+slack
+}
+
 func TestScheduleStopsAfterLastPhase(t *testing.T) {
 	p, err := newPacer("10s@1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	logStart := time.Now()
-	if _, ok := p.schedule(logStart); !ok {
+	if _, ok := p.schedule(at(logStart)); !ok {
 		t.Fatal("first request not scheduled")
 	}
-	if _, ok := p.schedule(logStart.Add(11 * time.Second)); ok {
+	if _, ok := p.schedule(at(logStart.Add(11 * time.Second))); ok {
 		t.Error("request after the last phase was scheduled")
 	}
 }
@@ -146,13 +151,41 @@ func TestScheduleStopsOncePaceIsOver(t *testing.T) {
 		t.Fatal(err)
 	}
 	logStart := time.Now()
-	if _, ok := p.schedule(logStart); !ok {
+	if _, ok := p.schedule(at(logStart)); !ok {
 		t.Fatal("first request not scheduled")
 	}
 	time.Sleep(5 * time.Millisecond)
 	// Inside the pace in log time, but the replay has run out of wall time.
-	if _, ok := p.schedule(logStart); ok {
+	if _, ok := p.schedule(at(logStart)); ok {
 		t.Error("request scheduled after the pace ended")
+	}
+}
+
+// at returns a request logged at t.
+func at(t time.Time) *Request {
+	return &Request{Timestamp: t}
+}
+
+// A session ends where it ended in the log: at @10, 30s of log is 3s.
+func TestScheduleSetsSessionDeadlineInLogTime(t *testing.T) {
+	p, err := newPacer("1m@10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	req := &Request{Timestamp: start, DisconnectAfter: Duration(30 * time.Second)}
+	if _, ok := p.schedule(req); !ok {
+		t.Fatal("request not scheduled")
+	}
+	// The timeline is anchored a moment after start, so the session ends a
+	// little after it.
+	if got := req.disconnectAt.Sub(start); !justOver(got, 3*time.Second, 50*time.Millisecond) {
+		t.Errorf("session ends %v after the request; want just over 3s", got)
+	}
+
+	ordinary := at(start)
+	if _, ok := p.schedule(ordinary); !ok || !ordinary.disconnectAt.IsZero() {
+		t.Errorf("ordinary request disconnectAt = %v; want none", ordinary.disconnectAt)
 	}
 }
 
@@ -162,8 +195,10 @@ func BenchmarkPacerSchedule(b *testing.B) {
 		b.Fatal(err)
 	}
 	t := time.Now()
+	req := &Request{}
 	b.ReportAllocs()
 	for i := range b.N {
-		_, _ = p.schedule(t.Add(time.Duration(i)))
+		req.Timestamp = t.Add(time.Duration(i))
+		_, _ = p.schedule(req)
 	}
 }
