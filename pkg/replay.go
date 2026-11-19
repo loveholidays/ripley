@@ -37,123 +37,143 @@ func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, max
 }
 
 func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int, strict bool, maxInFlight, connections, maxConnections int, disableKeepAlives bool, printStatsInterval time.Duration, metricsConfig MetricsConfig) int {
-	// Default exit code
-	var exitCode = 0
-	// Ensures we have handled all HTTP Request results before exiting
-	var waitGroup sync.WaitGroup
-	// Ensures result handler goroutine completes before closing results channel
-	var resultHandlerWG sync.WaitGroup
-
-	// Send requests to the request runner on this channel
-	requests := make(chan *Request)
-
-	// Requests send their results on this channel
-	results := make(chan *Result)
-
-	// Initialize metrics recorder (no-op if disabled)
-	metricsRecorder := NewMetricsRecorder(metricsConfig, maxInFlight)
-	stopMonitoring := metricsRecorder.StartMonitoring(requests, results)
+	r := &replayer{
+		requests: make(chan *Request),
+		results:  make(chan *Result),
+		metrics:  NewMetricsRecorder(metricsConfig, maxInFlight),
+		silent:   silent,
+		strict:   strict,
+	}
+	stopMonitoring := r.metrics.StartMonitoring(r.requests, r.results)
 	defer stopMonitoring()
 
-	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
 	if err != nil {
 		panic(err)
 	}
 	pacer.ReportInterval = printStatsInterval
+	r.pacer = pacer
 
-	// Read Request JSONL input from STDIN. bufio.Reader.ReadBytes has no line
-	// length limit, unlike bufio.Scanner, so large request bodies are fine.
-	// The buffer only sets how much is read per call to the OS.
-	input := bufio.NewReaderSize(os.Stdin, 1<<20)
+	startRequestRunner(maxInFlight, r.requests, r.results, dryRun, timeout, connections, maxConnections, disableKeepAlives)
 
-	// Start running requests as they arrive
-	startRequestRunner(maxInFlight, requests, results, dryRun, timeout, connections, maxConnections, disableKeepAlives)
-
-	// Goroutine to handle the  HTTP client result
-	resultHandlerWG.Add(1)
+	handled := make(chan struct{})
 	go func() {
-		defer resultHandlerWG.Done()
-		out := newLineWriter(os.Stdout)
-		defer func() { _ = out.Flush() }()
-		for {
-			result, ok := receiveOrFlush(results, out)
-			if !ok {
-				return
-			}
-			waitGroup.Done()
-
-			// If there's a panic elsewhere, this channel can return nil
-			if result == nil {
-				return
-			}
-
-			metricsRecorder.RecordRequest(result)
-
-			if !silent {
-				jsonResult, err := json.Marshal(result)
-
-				if err != nil {
-					panic(err)
-				}
-
-				_ = out.WriteLine(append(jsonResult, '\n'))
-			}
-		}
+		defer close(handled)
+		r.handleResults(newLineWriter(os.Stdout))
 	}()
 
-	for {
-		// The line keeps its "\n" or "\r\n"; json.Unmarshal treats it as whitespace.
-		line, readErr := input.ReadBytes('\n')
-		if errors.Is(readErr, io.EOF) && len(line) == 0 {
-			break
-		}
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			panic(readErr)
-		}
+	// bufio.Reader.ReadBytes has no line length limit, unlike bufio.Scanner,
+	// so large request bodies are fine. The buffer only sets how much is read
+	// per call to the OS.
+	exitCode := r.sendRequests(bufio.NewReaderSize(os.Stdin, 1<<20))
 
+	// Stop the request runner, wait for every result, then stop the handler.
+	close(r.requests)
+	r.pending.Wait()
+	close(r.results)
+	<-handled
+
+	return exitCode
+}
+
+// replayer holds the state shared by the two halves of a replay: sending
+// requests on schedule, and handling their results.
+type replayer struct {
+	pacer    *pacer
+	metrics  MetricsRecorder
+	requests chan *Request // to the request runner
+	results  chan *Result  // from the request runner
+	pending  sync.WaitGroup
+	silent   bool // do not write results
+	strict   bool // panic on an invalid request
+}
+
+// sendRequests replays each request in input on schedule, until the input or
+// the pace ends. It returns the exit code: 126 if any request was invalid.
+func (r *replayer) sendRequests(input *bufio.Reader) int {
+	exitCode := 0
+	for {
+		line, ok := nextLine(input)
+		if !ok {
+			return exitCode
+		}
 		req, err := unmarshalRequest(line)
 		if err != nil {
 			exitCode = 126
-			result, _ := json.Marshal(Result{
-				StatusCode: 0,
-				Latency:    0,
-				Request:    req,
-				ErrorMsg:   fmt.Sprintf("%v", err),
-			})
-			fmt.Println(string(result))
-
-			if strict {
-				panic(err)
-			}
+			r.reject(req, err)
 			continue
 		}
-
-		// The pacer decides when each request is sent
-		wait, ok := pacer.schedule(req.Timestamp)
-		if !ok {
-			break
+		if !r.send(req) {
+			return exitCode
 		}
-		if req.DisconnectAfter > 0 {
-			// The session ends where it ended in the log, mapped onto the wall clock.
-			req.disconnectAt = pacer.wall(req.Timestamp.Add(time.Duration(req.DisconnectAfter)))
-		}
-		time.Sleep(wait)
-		waitGroup.Add(1)
-		requests <- req
 	}
+}
 
-	// Close requests channel to signal the request runner to stop
-	close(requests)
+// nextLine returns the next line of input. The line keeps its "\n" or
+// "\r\n", which json.Unmarshal treats as whitespace, and a final line without
+// one is still returned. It returns false at the end of input and panics if
+// the input cannot be read.
+func nextLine(input *bufio.Reader) ([]byte, bool) {
+	line, err := input.ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		panic(err)
+	}
+	return line, len(line) > 0
+}
 
-	// Wait for all HTTP requests to complete
-	waitGroup.Wait()
+// reject writes an error result for a request that could not be parsed, and
+// panics in strict mode.
+func (r *replayer) reject(req *Request, err error) {
+	result, _ := json.Marshal(Result{Request: req, ErrorMsg: err.Error()})
+	fmt.Println(string(result))
+	if r.strict {
+		panic(err)
+	}
+}
 
-	// Close results channel to signal result handler to stop
-	close(results)
+// send waits until req is due, then hands it to the request runner. It
+// returns false, without sending, once the pace is over.
+func (r *replayer) send(req *Request) bool {
+	wait, ok := r.pacer.schedule(req.Timestamp)
+	if !ok {
+		return false
+	}
+	if req.DisconnectAfter > 0 {
+		// The session ends where it ended in the log, mapped onto the wall clock.
+		req.disconnectAt = r.pacer.wall(req.Timestamp.Add(time.Duration(req.DisconnectAfter)))
+	}
+	time.Sleep(wait)
+	r.pending.Add(1)
+	r.requests <- req
+	return true
+}
 
-	// Wait for result handler to finish processing all results
-	resultHandlerWG.Wait()
+// handleResults records each result and writes it to out, until results is
+// closed.
+func (r *replayer) handleResults(out *lineWriter) {
+	defer func() { _ = out.Flush() }()
+	for {
+		result, ok := receiveOrFlush(r.results, out)
+		if !ok {
+			return
+		}
+		r.pending.Done()
 
-	return exitCode
+		// If there's a panic elsewhere, this channel can return nil
+		if result == nil {
+			return
+		}
+		r.metrics.RecordRequest(result)
+		if !r.silent {
+			writeResult(out, result)
+		}
+	}
+}
+
+func writeResult(out *lineWriter, result *Result) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		panic(err)
+	}
+	_ = out.WriteLine(append(data, '\n'))
 }

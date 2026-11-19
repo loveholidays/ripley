@@ -93,22 +93,37 @@ func TestScheduleFollowsRate(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			p, err := newPacer(tc.pace)
-			if err != nil {
-				t.Fatal(err)
-			}
-			logStart := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
-
-			if wait, ok := p.schedule(logStart); !ok || wait != 0 {
-				t.Fatalf("first wait = %v, %v; want 0", wait, ok)
-			}
 			// The wait is measured from a later now, so it is a little short.
-			wait, ok := p.schedule(logStart.Add(tc.gap))
-			if !ok || wait > tc.want || wait < tc.want-50*time.Millisecond {
-				t.Errorf("second wait = %v, %v; want just under %v", wait, ok, tc.want)
+			if wait := secondWait(t, tc.pace, tc.gap); !justUnder(wait, tc.want, 50*time.Millisecond) {
+				t.Errorf("second wait = %v; want just under %v", wait, tc.want)
 			}
 		})
 	}
+}
+
+// secondWait schedules two requests gap apart in log time at pace, and returns
+// how long the second must wait. The first, which anchors the timeline, must
+// be sent at once.
+func secondWait(t *testing.T, pace string, gap time.Duration) time.Duration {
+	t.Helper()
+	p, err := newPacer(pace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logStart := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
+	if wait, ok := p.schedule(logStart); !ok || wait != 0 {
+		t.Fatalf("first wait = %v, %v; want 0", wait, ok)
+	}
+	wait, ok := p.schedule(logStart.Add(gap))
+	if !ok {
+		t.Fatal("second request not scheduled")
+	}
+	return wait
+}
+
+// justUnder reports whether got is at most want and less than slack below it.
+func justUnder(got, want, slack time.Duration) bool {
+	return got <= want && got > want-slack
 }
 
 func TestScheduleStopsAfterLastPhase(t *testing.T) {

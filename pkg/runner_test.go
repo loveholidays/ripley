@@ -20,6 +20,7 @@ package ripley
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,12 +30,18 @@ import (
 	"time"
 )
 
-// blockingServer holds every request open until release is closed, and
-// tracks how many are open at once.
+// blockingServer holds every request open until releaseAll, and tracks how
+// many are open at once.
 type blockingServer struct {
 	*httptest.Server
 	release       chan struct{}
+	releaseOnce   sync.Once
 	open, maxOpen atomic.Int64
+}
+
+// releaseAll lets every held request, and any later one, finish.
+func (s *blockingServer) releaseAll() {
+	s.releaseOnce.Do(func() { close(s.release) })
 }
 
 func newBlockingServer(t *testing.T) *blockingServer {
@@ -52,12 +59,16 @@ func newBlockingServer(t *testing.T) *blockingServer {
 		<-s.release
 	}))
 	t.Cleanup(s.Close)
+	// Cleanups run last first: release held requests before Close waits for
+	// them, so a failing test fails rather than hangs.
+	t.Cleanup(s.releaseAll)
 	return s
 }
 
-// runAll sends n requests to url through runRequests and returns once all
-// results arrive.
-func runAll(t *testing.T, url string, n int, limit inFlight, whileRunning func()) {
+// runAll sends n requests to s through runRequests, capped by limit. Once at
+// least want requests are open at once, it waits a little longer for any extra
+// request to slip through, then releases them all and waits for every result.
+func (s *blockingServer) runAll(t *testing.T, n int, limit inFlight, want int64) {
 	t.Helper()
 	client := testClient(t, 10*time.Second)
 	client.Transport = &http.Transport{MaxIdleConnsPerHost: n}
@@ -76,16 +87,16 @@ func runAll(t *testing.T, url string, n int, limit inFlight, whileRunning func()
 		}
 	}()
 
-	sent := make(chan struct{})
 	go func() {
-		defer close(sent)
 		for range n {
-			requests <- &Request{Method: "GET", Url: url}
+			requests <- &Request{Method: "GET", Url: s.URL}
 		}
 		close(requests)
 	}()
-	whileRunning()
-	<-sent
+
+	waitFor(t, fmt.Sprintf("%d requests to be open at once", want), func() bool { return s.open.Load() >= want })
+	time.Sleep(50 * time.Millisecond)
+	s.releaseAll()
 	collected.Wait()
 }
 
@@ -105,20 +116,13 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 func TestRunRequestsDoesNotWaitForResponses(t *testing.T) {
 	srv := newBlockingServer(t)
 	const n = 200
-	runAll(t, srv.URL, n, nil, func() {
-		waitFor(t, "all requests to be open at once", func() bool { return srv.open.Load() == n })
-		close(srv.release)
-	})
+	srv.runAll(t, n, nil, n)
 }
 
 func TestInFlightCapsConcurrentRequests(t *testing.T) {
 	srv := newBlockingServer(t)
 	const limit = 3
-	runAll(t, srv.URL, 10, newInFlight(limit), func() {
-		waitFor(t, "the cap to fill", func() bool { return srv.open.Load() == limit })
-		time.Sleep(50 * time.Millisecond) // time for an extra request to slip through
-		close(srv.release)
-	})
+	srv.runAll(t, 10, newInFlight(limit), limit)
 	if got := srv.maxOpen.Load(); got != limit {
 		t.Errorf("max open requests = %d; want %d", got, limit)
 	}

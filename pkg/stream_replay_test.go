@@ -19,12 +19,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -34,10 +32,10 @@ func TestReplayMixesSSEAndShortRequests(t *testing.T) {
 	closed := make(chan struct{})
 	srv := newMixedServer(t, closed)
 	timestamp := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
-	results := replay(t, []*Request{
-		{Method: "GET", Url: srv.URL + "/sse", Timestamp: timestamp, DisconnectAfter: Duration(200 * time.Millisecond)},
-		{Method: "GET", Url: srv.URL + "/short", Timestamp: timestamp},
-	})
+	results := replay(t, "1s@1",
+		&Request{Method: "GET", Url: srv.URL + "/sse", Timestamp: timestamp, DisconnectAfter: Duration(200 * time.Millisecond)},
+		&Request{Method: "GET", Url: srv.URL + "/short", Timestamp: timestamp},
+	)
 	if len(results) != 2 {
 		t.Fatalf("got %d results; want 2", len(results))
 	}
@@ -82,8 +80,9 @@ func newMixedServer(t *testing.T, closed chan<- struct{}) *httptest.Server {
 	return srv
 }
 
-// replay runs Replay with requests on stdin and returns the decoded results.
-func replay(t *testing.T, requests []*Request) []Result {
+// replay runs Replay at pace with requests on stdin and no cap on requests in
+// flight, and returns the decoded results.
+func replay(t *testing.T, pace string, requests ...*Request) []Result {
 	t.Helper()
 	input := tempFile(t, "input")
 	encoder := json.NewEncoder(input)
@@ -99,7 +98,7 @@ func replay(t *testing.T, requests []*Request) []Result {
 	oldIn, oldOut := os.Stdin, os.Stdout
 	os.Stdin, os.Stdout = input, output
 	defer func() { os.Stdin, os.Stdout = oldIn, oldOut }()
-	if code := Replay("1s@1", false, false, 1, false, 2, 10, 0, false, 0, false, ""); code != 0 {
+	if code := Replay(pace, false, false, 10, false, 0, 10, 0, false, 0, false, ""); code != 0 {
 		t.Fatalf("exit code = %d; want zero", code)
 	}
 	return readResults(t, output.Name())
@@ -133,58 +132,8 @@ func readResults(t *testing.T, name string) []Result {
 	return results
 }
 
-// replayResults replays reqs at the given pace and returns the results.
-func replayResults(t *testing.T, pace string, reqs ...*Request) []Result {
-	t.Helper()
-	var input bytes.Buffer
-	encoder := json.NewEncoder(&input)
-	for _, req := range reqs {
-		if err := encoder.Encode(req); err != nil {
-			t.Fatal(err)
-		}
-	}
-	inFile := filepath.Join(t.TempDir(), "input")
-	if err := os.WriteFile(inFile, input.Bytes(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	in, err := os.Open(inFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = in.Close() }()
-	out, err := os.Create(filepath.Join(t.TempDir(), "output"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = out.Close() }()
-
-	oldIn, oldOut := os.Stdin, os.Stdout
-	os.Stdin, os.Stdout = in, out
-	code := Replay(pace, false, false, 10, false, 0, 10, 0, false, 0, false, "")
-	os.Stdin, os.Stdout = oldIn, oldOut
-	if code != 0 {
-		t.Fatalf("exit code = %d; want zero", code)
-	}
-
-	data, err := os.ReadFile(out.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var results []Result
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-		var res Result
-		if err := json.Unmarshal([]byte(line), &res); err != nil {
-			t.Fatal(err)
-		}
-		results = append(results, res)
-	}
-	return results
-}
-
 func TestReplaySessionsFollowLogTime(t *testing.T) {
 	url := serve(t, sseEvents)
-	timestamp := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
-
 	tests := map[string]struct {
 		pace     string
 		min, max time.Duration // bounds on the session's wall time
@@ -197,21 +146,30 @@ func TestReplaySessionsFollowLogTime(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			results := replayResults(t, tc.pace, &Request{
-				Method: "GET", Url: url, Timestamp: timestamp, DisconnectAfter: Duration(2 * time.Second),
-			})
-			if len(results) != 1 {
-				t.Fatalf("got %d results; want 1", len(results))
-			}
-			res := results[0]
-			if !res.Disconnected || res.ErrorMsg != "" {
-				t.Fatalf("result = %+v; want an intentional disconnect", res)
-			}
-			if res.Latency < tc.min || res.Latency > tc.max {
-				t.Errorf("session lasted %v; want %v to %v", res.Latency, tc.min, tc.max)
+			if got := replaySession(t, url, tc.pace); got < tc.min || got > tc.max {
+				t.Errorf("session lasted %v; want %v to %v", got, tc.min, tc.max)
 			}
 		})
 	}
+}
+
+// replaySession replays one SSE session logged as lasting 2s, and returns how
+// long it lasted in wall time. The session must end in an intentional
+// disconnect.
+func replaySession(t *testing.T, url, pace string) time.Duration {
+	t.Helper()
+	timestamp := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
+	results := replay(t, pace, &Request{
+		Method: "GET", Url: url, Timestamp: timestamp, DisconnectAfter: Duration(2 * time.Second),
+	})
+	if len(results) != 1 {
+		t.Fatalf("got %d results; want 1", len(results))
+	}
+	res := results[0]
+	if got := outcomeOf(&res); got != (outcome{status: 200, disconnected: true}) {
+		t.Fatalf("result = %+v; want an intentional disconnect", res)
+	}
+	return res.Latency
 }
 
 // The replay must keep its schedule however long responses take: 50 requests
@@ -232,10 +190,10 @@ func TestReplayDoesNotWaitForResponses(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 		allOpen <- srv.open.Load() == n
-		close(srv.release)
+		srv.releaseAll()
 	}()
 
-	if results := replayResults(t, "10s@1", reqs...); len(results) != n {
+	if results := replay(t, "10s@1", reqs...); len(results) != n {
 		t.Fatalf("got %d results; want %d", len(results), n)
 	}
 	if !<-allOpen {
