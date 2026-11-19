@@ -101,7 +101,7 @@ func TestDisconnectAfterInterruptsThrottledRead(t *testing.T) {
 	res := runRequest(testClient(t, 10*time.Second), &Request{
 		Method: "GET", Url: srv.URL, Network: presetKbps["3g"], DisconnectAfter: Duration(300 * time.Millisecond),
 	})
-	if !res.Disconnected || res.ErrorMsg != "" || res.StatusCode != http.StatusOK {
+	if got := outcomeOf(res); got != (outcome{status: http.StatusOK, disconnected: true}) {
 		t.Fatalf("result = %+v; want an intentional disconnect", res)
 	}
 	if res.Latency > 3*time.Second {

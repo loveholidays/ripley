@@ -50,21 +50,37 @@ func (k *Kbps) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
-	switch v := v.(type) {
-	case nil:
+	if v == nil {
 		return nil
-	case string:
-		if preset, ok := presetKbps[v]; ok {
-			*k = preset
-			return nil
-		}
-	case float64: // encoding/json decodes every number as float64
-		if v == math.Trunc(v) && v >= 0 && v <= maxKbps {
-			*k = Kbps(v)
-			return nil
-		}
 	}
-	return fmt.Errorf("network must be 3g, slow-4g, fast-4g or a whole number of kbps from 0 to %d, not %s", maxKbps, b)
+	speed, ok := parseKbps(v)
+	if !ok {
+		return fmt.Errorf("network must be 3g, slow-4g, fast-4g or a whole number of kbps from 0 to %d, not %s", maxKbps, b)
+	}
+	*k = speed
+	return nil
+}
+
+// parseKbps reads a decoded JSON value as a preset name or a whole number of
+// kbps in range.
+func parseKbps(v any) (Kbps, bool) {
+	switch v := v.(type) {
+	case string:
+		speed, ok := presetKbps[v]
+		return speed, ok
+	case float64: // encoding/json decodes every number as float64
+		if !isWholeKbps(v) {
+			return 0, false
+		}
+		return Kbps(v), true
+	}
+	return 0, false
+}
+
+// isWholeKbps reports whether v is a whole number of kbps that is accepted.
+func isWholeKbps(v float64) bool {
+	inRange := v >= 0 && v <= maxKbps
+	return inRange && v == math.Trunc(v)
 }
 
 const (
