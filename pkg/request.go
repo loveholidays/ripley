@@ -19,10 +19,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -30,16 +30,68 @@ var (
 	validMethods = [9]string{"GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"}
 )
 
+// Request describes an HTTP request read from JSONL. Headers are replayed as
+// supplied. Long-lived responses, including SSE, do not require a special type.
 type Request struct {
 	Method    string            `json:"method"`
 	Url       string            `json:"url"`
 	Body      string            `json:"body"`
 	Timestamp time.Time         `json:"timestamp"`
 	Headers   map[string]string `json:"headers"`
+
+	// DisconnectAfter, when positive, ends the request this long after its
+	// Timestamp, measured in log time so the session keeps its place in the
+	// replayed traffic: at a pace of @10, a 30s session lasts 3s of wall time,
+	// and one that spans a phase change follows both rates. The time covers
+	// queueing, connection setup and body consumption, and replaces the HTTP
+	// client's timeout for this request. If it expires first,
+	// Result.Disconnected is true and ErrorMsg is empty. Zero uses the
+	// ordinary client timeout; negative values are invalid.
+	DisconnectAfter Duration `json:"disconnectAfter,omitempty"`
+
+	// Network limits how fast the response body is read. In JSON it is a
+	// Chrome DevTools preset ("3g", "slow-4g" or "fast-4g") or a whole number of
+	// kilobits per second. 0 means unlimited.
+	Network Kbps `json:"network,omitempty"`
+
+	// disconnectAt is the wall time at which the client ends the request. The
+	// replay loop sets it from DisconnectAfter through the pacer's timeline;
+	// the zero value means no session limit.
+	disconnectAt time.Time
+}
+
+// Duration is a time.Duration encoded in JSON as a Go duration string such
+// as "30s" or "5m".
+type Duration time.Duration
+
+// UnmarshalJSON parses a Go duration string. null leaves d unchanged, as
+// encoding/json does for built-in types, so it reads as "not set".
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		return nil
+	}
+
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return fmt.Errorf(`duration must be a string such as "30s": %w`, err)
+	}
+
+	v, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+
+	*d = Duration(v)
+	return nil
+}
+
+// MarshalJSON encodes d as a Go duration string.
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
 }
 
 func (r *Request) httpRequest() (*http.Request, error) {
-	req, err := http.NewRequest(r.Method, r.Url, bytes.NewReader([]byte(r.Body)))
+	req, err := http.NewRequest(r.Method, r.Url, strings.NewReader(r.Body))
 
 	if err != nil {
 		return nil, err
@@ -75,6 +127,10 @@ func unmarshalRequest(jsonRequest []byte) (*Request, error) {
 
 	if req.Timestamp.IsZero() {
 		return req, fmt.Errorf("missing required key: timestamp")
+	}
+
+	if req.DisconnectAfter < 0 {
+		return req, fmt.Errorf("disconnectAfter must not be negative")
 	}
 
 	return req, nil

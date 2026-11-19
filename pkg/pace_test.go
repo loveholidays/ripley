@@ -19,7 +19,6 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package ripley
 
 import (
-	"math"
 	"testing"
 	"time"
 )
@@ -74,70 +73,147 @@ func TestParseManyPhases(t *testing.T) {
 	}
 }
 
-func TestWaitDuration(t *testing.T) {
-	pacer, err := newPacer("30s@1")
-
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-
-	now := time.Now()
-	duration := pacer.waitDuration(now)
-
-	if duration > 0 {
-		t.Errorf("duration = %v; want 0 or negative", duration)
-	}
-
-	now = now.Add(2 * time.Second)
-	duration = pacer.waitDuration(now)
-	expected := 2 * time.Second
-
-	if !equalsWithinThreshold(duration, expected, 100*time.Microsecond) {
-		t.Errorf("duration = %v; want %v", duration, expected)
+func TestParsePhasesRejectsInvalidPhases(t *testing.T) {
+	for _, pace := range []string{"1m@0", "1m@-1", "1m@NaN", "1m@Inf", "-1m@1", "10s", "10s@1  5s@2", ""} {
+		if _, err := parsePhases(pace); err == nil {
+			t.Errorf("parsePhases(%q) succeeded; want an error", pace)
+		}
 	}
 }
 
-func TestWaitDuration10X(t *testing.T) {
-	pacer, err := newPacer("30s@10")
-
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
+func TestScheduleFollowsRate(t *testing.T) {
+	tests := map[string]struct {
+		pace string
+		gap  time.Duration // log time between two requests
+		want time.Duration // wall time between their sends
+	}{
+		"real time": {"30s@1", 2 * time.Second, 2 * time.Second},
+		"10x":       {"30s@10", time.Second, time.Second / 10},
+		"half":      {"30s@0.5", time.Second, 2 * time.Second},
 	}
-
-	now := time.Now()
-	duration := pacer.waitDuration(now)
-
-	if duration > 0 {
-		t.Errorf("duration = %v; want 0 or negative", duration)
-	}
-
-	now = now.Add(1 * time.Second)
-	duration = pacer.waitDuration(now)
-	expected := time.Second / 10
-
-	if !equalsWithinThreshold(duration, expected, 100*time.Microsecond) {
-		t.Errorf("duration = %v; want %v", duration, expected)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			// The wait is measured from a later now, so it is a little short.
+			if wait := secondWait(t, tc.pace, tc.gap); !justUnder(wait, tc.want, 50*time.Millisecond) {
+				t.Errorf("second wait = %v; want just under %v", wait, tc.want)
+			}
+		})
 	}
 }
 
-func TestPacerDoneOnLastPhaseElapsed(t *testing.T) {
-	pacer, err := newPacer("30s@10")
-
+// secondWait schedules two requests gap apart in log time at pace, and returns
+// how long the second must wait. The first, which anchors the timeline, must
+// be sent at once.
+func secondWait(t *testing.T, pace string, gap time.Duration) time.Duration {
+	t.Helper()
+	p, err := newPacer(pace)
 	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
+		t.Fatal(err)
 	}
-
-	if pacer.done {
-		t.Errorf("pacer.done = %v; want false", pacer.done)
+	logStart := time.Date(2021, 11, 8, 18, 59, 58, 0, time.UTC)
+	if wait, ok := p.schedule(at(logStart)); !ok || wait != 0 {
+		t.Fatalf("first wait = %v, %v; want 0", wait, ok)
 	}
+	wait, ok := p.schedule(at(logStart.Add(gap)))
+	if !ok {
+		t.Fatal("second request not scheduled")
+	}
+	return wait
+}
 
-	pacer.onPhaseElapsed()
+// justUnder reports whether got is at most want and less than slack below it.
+func justUnder(got, want, slack time.Duration) bool {
+	return got <= want && got > want-slack
+}
 
-	if !pacer.done {
-		t.Errorf("pacer.done = %v; want true", pacer.done)
+// justOver reports whether got is at least want and less than slack above it.
+func justOver(got, want, slack time.Duration) bool {
+	return got >= want && got < want+slack
+}
+
+func TestScheduleStopsAfterLastPhase(t *testing.T) {
+	p, err := newPacer("10s@1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logStart := time.Now()
+	if _, ok := p.schedule(at(logStart)); !ok {
+		t.Fatal("first request not scheduled")
+	}
+	if _, ok := p.schedule(at(logStart.Add(11 * time.Second))); ok {
+		t.Error("request after the last phase was scheduled")
 	}
 }
 
-func equalsWithinThreshold(d1, d2, threshold time.Duration) bool {
-	return math.Abs(float64(d1-d2)) <= float64(threshold)
+func TestScheduleStopsOncePaceIsOver(t *testing.T) {
+	p, err := newPacer("1ms@1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logStart := time.Now()
+	if _, ok := p.schedule(at(logStart)); !ok {
+		t.Fatal("first request not scheduled")
+	}
+	time.Sleep(5 * time.Millisecond)
+	// Inside the pace in log time, but the replay has run out of wall time.
+	if _, ok := p.schedule(at(logStart)); ok {
+		t.Error("request scheduled after the pace ended")
+	}
+}
+
+// Report intervals under a second used to divide by zero.
+func TestReportStatsWithSubSecondInterval(t *testing.T) {
+	p, err := newPacer("1m@1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.ReportInterval = 100 * time.Millisecond
+	logStart := time.Now()
+	for i := range 3 {
+		if _, ok := p.schedule(at(logStart.Add(time.Duration(i) * 150 * time.Millisecond))); !ok {
+			t.Fatal("request not scheduled")
+		}
+	}
+}
+
+// at returns a request logged at t.
+func at(t time.Time) *Request {
+	return &Request{Timestamp: t}
+}
+
+// A session ends where it ended in the log: at @10, 30s of log is 3s.
+func TestScheduleSetsSessionDeadlineInLogTime(t *testing.T) {
+	p, err := newPacer("1m@10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	req := &Request{Timestamp: start, DisconnectAfter: Duration(30 * time.Second)}
+	if _, ok := p.schedule(req); !ok {
+		t.Fatal("request not scheduled")
+	}
+	// The timeline is anchored a moment after start, so the session ends a
+	// little after it.
+	if got := req.disconnectAt.Sub(start); !justOver(got, 3*time.Second, 50*time.Millisecond) {
+		t.Errorf("session ends %v after the request; want just over 3s", got)
+	}
+
+	ordinary := at(start)
+	if _, ok := p.schedule(ordinary); !ok || !ordinary.disconnectAt.IsZero() {
+		t.Errorf("ordinary request disconnectAt = %v; want none", ordinary.disconnectAt)
+	}
+}
+
+func BenchmarkPacerSchedule(b *testing.B) {
+	p, err := newPacer("1h@1")
+	if err != nil {
+		b.Fatal(err)
+	}
+	t := time.Now()
+	req := &Request{}
+	b.ReportAllocs()
+	for i := range b.N {
+		req.Timestamp = t.Add(time.Duration(i))
+		_, _ = p.schedule(req)
+	}
 }

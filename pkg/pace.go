@@ -20,24 +20,23 @@ package ripley
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
+// pacer decides when each request is replayed, and reports pacing stats.
+// Only the replay loop uses it, so it needs no locking.
 type pacer struct {
-	ReportInterval        time.Duration
-	mu                    sync.RWMutex // protects all fields below
-	phases                []*phase
-	lastRequestTime       time.Time // last Request that we already replayed in "log time"
-	lastRequestWallTime   time.Time // last Request that we already replayed in "wall time"
-	phaseStartRequestTime time.Time
-	phaseStartWallTime    time.Time
-	done                  bool
-	requestCounter        int
-	nextReport            time.Time
+	ReportInterval  time.Duration
+	phases          []*phase
+	timeline        timeline // anchored by the first call to schedule
+	anchored        bool
+	lastRequestTime time.Time // log time of the last request scheduled
+	requestCounter  int
+	nextReport      time.Time
 }
 
 type phase struct {
@@ -55,83 +54,46 @@ func newPacer(phasesStr string) (*pacer, error) {
 	return &pacer{phases: phases}, nil
 }
 
-func (p *pacer) start() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Run a timer for the first phase's duration
-	if len(p.phases) > 0 {
-		time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
-	}
-	if p.ReportInterval > 0 {
-		p.nextReport = time.Now().Add(p.ReportInterval)
-	}
-}
-
-func (p *pacer) onPhaseElapsed() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Pop phase
-	if len(p.phases) > 0 {
-		p.phases = p.phases[1:]
-	}
-	p.phaseStartRequestTime = p.lastRequestTime
-	p.phaseStartWallTime = p.lastRequestWallTime
-
-	if len(p.phases) == 0 {
-		p.done = true
-	} else {
-		// Create a timer with next phase
-		time.AfterFunc(p.phases[0].duration, p.onPhaseElapsed)
-	}
-}
-
-func (p *pacer) waitDuration(t time.Time) time.Duration {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	now := time.Now()
-
-	if p.lastRequestTime.IsZero() {
-		p.lastRequestTime = t
-		p.lastRequestWallTime = now
-		p.phaseStartRequestTime = p.lastRequestTime
-		p.phaseStartWallTime = p.lastRequestWallTime
+// schedule returns how long to wait before sending req: until its place on
+// the timeline, or zero or less if that has passed. It returns false once the
+// pace is over, or if req falls after it. The first call anchors the
+// timeline, so the first request is sent at once.
+//
+// A session ends where it ended in the log, so schedule also sets
+// req.disconnectAt from DisconnectAfter, mapped onto the wall clock.
+func (p *pacer) schedule(req *Request) (time.Duration, bool) {
+	t, now := req.Timestamp, time.Now()
+	if !p.anchored {
+		p.anchor(t, now)
 	}
 
-	// Check if we have any phases left
-	if len(p.phases) == 0 {
-		return 0
+	send := p.timeline.wall(t)
+	if now.After(p.timeline.end) || send.After(p.timeline.end) {
+		return 0, false
+	}
+	if req.DisconnectAfter > 0 {
+		req.disconnectAt = p.timeline.wall(t.Add(time.Duration(req.DisconnectAfter)))
 	}
 
-	originalDurationFromPhaseStart := t.Sub(p.phaseStartRequestTime)
-	expectedDurationFromPhaseStart := time.Duration(float64(originalDurationFromPhaseStart) / p.phases[0].rate)
-	expectedWallTime := p.phaseStartWallTime.Add(expectedDurationFromPhaseStart)
-
-	p.reportStats(now, expectedWallTime)
-
-	duration := expectedWallTime.Sub(now)
+	p.reportStats(now, send, t)
 	p.lastRequestTime = t
-	p.lastRequestWallTime = expectedWallTime
-	return duration
+	return send.Sub(now), true
 }
 
-func (p *pacer) isDone() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.done
+func (p *pacer) anchor(logStart, wallStart time.Time) {
+	p.timeline = newTimeline(p.phases, logStart, wallStart)
+	p.anchored = true
+	p.lastRequestTime = logStart
+	if p.ReportInterval > 0 {
+		p.nextReport = wallStart.Add(p.ReportInterval)
+	}
 }
 
-func (p *pacer) reportStats(now, expectedWallTime time.Time) {
+// reportStats prints a line per elapsed report interval. t is the log time of
+// the request being scheduled; its rate is looked up only when printing.
+func (p *pacer) reportStats(now, expectedWallTime, t time.Time) {
 	if p.ReportInterval <= 0 {
 		return
-	}
-
-	// Get current rate safely
-	var currentRate = 1.0
-	if len(p.phases) > 0 {
-		currentRate = p.phases[0].rate
 	}
 
 	for p.nextReport.Before(expectedWallTime) {
@@ -139,8 +101,8 @@ func (p *pacer) reportStats(now, expectedWallTime time.Time) {
 			p.nextReport.Format(time.RFC3339),
 			now.Sub(p.nextReport).Seconds(),
 			p.lastRequestTime.Format(time.RFC3339),
-			currentRate,
-			p.requestCounter/int(p.ReportInterval.Seconds()))
+			p.timeline.rateAt(t),
+			int(float64(p.requestCounter)/p.ReportInterval.Seconds()))
 		p.nextReport = p.nextReport.Add(p.ReportInterval)
 		p.requestCounter = 0
 	}
@@ -149,26 +111,41 @@ func (p *pacer) reportStats(now, expectedWallTime time.Time) {
 
 // Format is [duration]@[rate] [duration]@[rate]..."
 // e.g. "5s@1 10m@2"
+// It returns at least one phase, each with a non-negative duration and a
+// positive, finite rate.
 func parsePhases(phasesStr string) ([]*phase, error) {
 	var phases []*phase
 
 	for _, durationAtRate := range strings.Split(phasesStr, " ") {
-		tokens := strings.Split(durationAtRate, "@")
+		durationStr, rateStr, ok := strings.Cut(durationAtRate, "@")
+		if !ok {
+			return nil, fmt.Errorf("invalid phase %q: want [duration]@[rate], such as 10s@1", durationAtRate)
+		}
 
-		duration, err := time.ParseDuration(tokens[0])
+		duration, err := time.ParseDuration(durationStr)
 
 		if err != nil {
 			return nil, err
 		}
 
-		rate, err := strconv.ParseFloat(tokens[1], 64)
+		rate, err := strconv.ParseFloat(rateStr, 64)
 
 		if err != nil {
 			return nil, err
+		}
+
+		if !validPhase(duration, rate) {
+			return nil, fmt.Errorf("invalid phase %q: duration must not be negative and rate must be positive", durationAtRate)
 		}
 
 		phases = append(phases, &phase{duration, rate})
 	}
 
 	return phases, nil
+}
+
+// validPhase reports whether a phase can be placed on the timeline: log time
+// must move forward, so the rate is positive and finite.
+func validPhase(duration time.Duration, rate float64) bool {
+	return duration >= 0 && rate > 0 && !math.IsInf(rate, 1)
 }

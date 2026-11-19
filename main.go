@@ -41,7 +41,7 @@ func main() {
 	strict := flag.Bool("strict", false, "Panic on bad input")
 	memprofile := flag.String("memprofile", "", "Write memory profile to `file` before exit")
 	cpuprofile := flag.String("cpuprofile", "", "Write cpu profile to `file` before exit")
-	numWorkers := flag.Int("workers", runtime.NumCPU()*2, "Number of client workers to use")
+	numWorkers := flag.Int("workers", 0, "Max requests in flight; at the limit, replay waits (default unlimited)")
 	metricsServerEnable := flag.Bool("metricsServerEnable", false, "Enable Prometheus metrics server on /metrics endpoint")
 	metricsServerAddr := flag.String("metricsServerAddr", "0.0.0.0:8081", "Metrics server listen address")
 	pushgatewayURL := flag.String("pushgateway-url", "", "Push Prometheus metrics to this Pushgateway URL")
@@ -58,7 +58,7 @@ Each report line is printed to stderr with the following fields in logfmt format
   skew_seconds
     Difference between "report_time" and current time in seconds. When the absolute
     value of this is higher than about 100ms, it shows that ripley cannot generate
-    enough load. Consider increasing workers, max connections, and/or CPU and IO requests.
+    enough load. Consider raising or removing -workers, max connections, and/or CPU and IO requests.
 
   last_request_time
     Original request time of the last request in RFC3339 format.
@@ -69,7 +69,7 @@ Each report line is printed to stderr with the following fields in logfmt format
   expected_rps
     Expected requests per second since the last report. This will differ from the
     actual requests per second if the system is unable to drive that many requests.
-    If that is the case, consider increasing workers, max connections, and/or
+    If that is the case, consider raising or removing -workers, max connections, and/or
     CPU and IO requests.
 
 When 0 (default) or negative, reporting is switched off.

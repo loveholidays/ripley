@@ -36,20 +36,20 @@ This file provides guidance to AI coding agents when working with code in this r
 - `pkg/replay.go`: Core replay orchestrator that coordinates the entire process
 - `pkg/request.go`: HTTP request structures and validation
 - `pkg/pace.go`: Rate pacing engine with support for multiple phases
-- `pkg/client.go`: HTTP client worker pool and request execution
+- `pkg/client.go`: Runs each request on its own goroutine and executes it
 - `pkg/metrics.go`: Prometheus metrics recording and HTTP server (`/metrics` endpoint)
 
 **Data Flow:**
 1. JSONL requests read from STDIN via `bufio.Scanner`
-2. `pacer` controls replay timing based on original timestamps and rate multipliers
-3. Worker pool of HTTP clients (`numWorkers` goroutines) processes requests concurrently
+2. `pacer` maps log time to wall time (`timeline`) to schedule requests and stream disconnects
+3. Each request runs on its own goroutine (optionally capped by `-workers`), so slow responses never delay the schedule
 4. Results streamed to STDOUT as JSONL
 
 **Key Concepts:**
 - **Phases**: Time-bounded periods with different rate multipliers (e.g., "10s@1 5m@10")
 - **Rate Pacing**: Maintains original traffic patterns while scaling by rate multipliers
 - **Request Format**: JSON with required fields: `url`, `method`, `timestamp`
-- **Worker Pool**: Configurable number of HTTP client workers for concurrent processing
+- **Goroutine per request**: Requests never wait for earlier responses; `-workers` optionally caps requests in flight
 - **Prometheus Metrics**: Optional metrics server exposing request duration, status codes, error counts, queue sizes, and pacer phase via `/metrics`
 
 ### Tools Architecture
@@ -68,7 +68,7 @@ This file provides guidance to AI coding agents when working with code in this r
 - Redirect handling: Uses last response (no follow)
 
 **Performance Tuning:**
-- Worker count defaults to `runtime.NumCPU() * 2`
+- Requests in flight are unlimited by default (`-workers` sets a cap)
 - Connection pooling optimized for high-throughput scenarios
 - Memory and CPU profiling support via command-line flags
 

@@ -94,6 +94,96 @@ produces
 
 Results output can be suppressed using the `-silent` flag.
 
+## Long-lived responses and SSE
+
+Ripley consumes response bodies incrementally without retaining their contents.
+SSE sessions are ordinary HTTP requests: supply the captured headers and an optional
+`disconnectAfter` (a Go duration string) to reproduce the client's session lifetime.
+
+```json
+{"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","headers":{"Accept":"text/event-stream","Last-Event-ID":"42"},"disconnectAfter":"5m"}
+```
+
+A positive `disconnectAfter` is measured in log time from the request's
+`timestamp`, so a session keeps its place in the replayed traffic: at `@10`, a
+`"30s"` session lasts 3 seconds, and one that spans a phase change follows both
+rates. It covers any wait for `-workers`, connection setup and response-body
+consumption, and replaces `-timeout` for that request only. A session whose
+time runs out while it waits for `-workers` is never sent, and is reported as an
+error. Zero or omitted `disconnectAfter` retains the existing client
+timeout; negative durations are invalid.
+
+When the session deadline expires first, the result has `"disconnected": true`
+and an empty `error`. This includes a server that never sends response headers:
+there is no separate header timeout, so such a session reports
+`"disconnected": true` with `"statusCode": 0`. If the server ends the response
+first, the result is a normal completion. Other failures remain errors, with
+`statusCode` zero as before. `latency` includes setup and response-body
+consumption. Ordinary results omit the new `disconnected` field. The echoed
+request normalizes durations, so `"5m"` appears as `"5m0s"`.
+
+Disconnected requests count towards `ripley_requests_total`, but not towards
+`ripley_request_duration_seconds` or `ripley_response_status_total`: their
+length was set by the input rather than measured, and they may have no status.
+
+Silence is legal in SSE and does not terminate a session. Each request runs on
+its own goroutine, so long-lived responses never hold back the requests after
+them. `-workers` caps the requests in flight, and unlimited is the default;
+at a cap, the replay waits and falls behind its schedule.
+
+Ripley does not parse individual SSE events or automatically reconnect. Captured
+reconnections must appear as separate requests in the input. SSE does not require
+HTTP/1.1; the ordinary transport can negotiate HTTP/2 over HTTPS.
+
+Try the sample server in one terminal with `go run etc/dummyweb.go`. Its `/sse`
+streams until the client disconnects; `/sse?lifetime=10s` makes the server end
+the stream itself after 10 seconds. Then:
+
+```bash
+go build -o ripley main.go
+printf '%s\n' '{"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","headers":{"Accept":"text/event-stream"},"disconnectAfter":"5s"}' | ./ripley
+```
+
+## Slow clients
+
+An optional `network` field limits how fast Ripley reads the response body, to
+replay clients on slow connections. It is either a Chrome DevTools preset:
+
+```json
+{"url":"http://localhost:8080/sse","method":"GET","timestamp":"2021-11-08T18:59:58.9Z","disconnectAfter":"5m","network":"3g"}
+```
+
+| `network` | Download speed |
+| --- | --- |
+| `"3g"` | 400 kbps (50 KB/s) |
+| `"slow-4g"` | 1440 kbps (180 KB/s) |
+| `"fast-4g"` | 8100 kbps (1 MB/s) |
+
+or, for any other speed, a whole number of kilobits per second, as in Chrome's
+custom profiles: `"network": 750`. Omitted or `0` means unlimited. Unknown
+presets, fractions, negative speeds and speeds above 10 Gbps are rejected.
+Results echo the speed as a number, so `"3g"` appears as `400`.
+
+Only the response body is limited: request bodies, headers and connection
+setup are not, and no latency is added. Each replayed request gets its own
+speed, as if it came from a different device; Chrome instead shares one speed
+between a page's requests.
+
+Ripley reads in chunks of at most a quarter of a second's worth (and at most
+8 KiB) and sleeps between them, so the limit is an average with small bursts.
+When the server sends more slowly than the limit, Ripley reads data as it
+arrives, and quiet periods earn at most a quarter second's allowance: a burst
+after a silent spell, as is common with SSE, is still read at the limited
+speed, as in Chrome.
+
+The server sees the slow client through TCP backpressure, but kernel and HTTP/2
+buffering let it send somewhat ahead of what Ripley has read. Go transparently
+decompresses gzip responses unless the request sets `Accept-Encoding`, so by
+default the limit applies to the decompressed bytes; set `Accept-Encoding` to
+limit the bytes as sent. A throttled request can overrun `-timeout` by up to one
+chunk's sleep, because the timeout is noticed on the next read;
+`disconnectAfter` interrupts the sleep immediately.
+
 ## Metrics and profiling
 
 Enable Prometheus metrics with `-metricsServerEnable`. Ripley listens on

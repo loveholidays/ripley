@@ -20,9 +20,11 @@ package ripley
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -282,4 +284,41 @@ func createTestRequests(serverURL string, count int) string {
 	}
 
 	return buffer.String()
+}
+
+func TestReplayReadsLongRequestLines(t *testing.T) {
+	var bodyBytes int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, _ := io.Copy(io.Discard, r.Body)
+		atomic.AddInt64(&bodyBytes, n)
+	}))
+	defer server.Close()
+
+	// Each body is far past bufio.Scanner's 64KB default line limit. The first
+	// line ends in CRLF and the last has no newline at all.
+	body := strings.Repeat("x", 1<<20)
+	line := `{"url":"` + server.URL + `","method":"POST","timestamp":"` +
+		time.Now().Format(time.RFC3339Nano) + `","body":"` + body + `"}`
+	input := line + "\r\n" + line
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	go func() {
+		defer func() { _ = w.Close() }()
+		_, _ = w.Write([]byte(input))
+	}()
+
+	originalStdin := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = originalStdin }()
+
+	if exitCode := Replay("1s@1", true, false, 1, false, 2, 2, 0, false, 0, false, ""); exitCode != 0 {
+		t.Errorf("exit code = %d; want 0", exitCode)
+	}
+	if got, want := atomic.LoadInt64(&bodyBytes), int64(2*len(body)); got != want {
+		t.Errorf("server received %d body bytes; want %d", got, want)
+	}
 }
