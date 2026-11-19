@@ -25,6 +25,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestNewMetricsRecorder_Disabled(t *testing.T) {
@@ -524,5 +526,37 @@ func TestMetricsRecorder_MultipleRequests(t *testing.T) {
 	// If we had no requests initially, we should have exactly 5 now
 	if !initialHasRequests && !strings.Contains(metrics, "ripley_requests_total 5") {
 		t.Error("Expected ripley_requests_total to be 5 for new instance")
+	}
+}
+
+// partialDeleter is implemented by every metric vector.
+type partialDeleter interface {
+	DeletePartialMatch(prometheus.Labels) int
+}
+
+// removeSeries removes, and counts, the series in v that carry the given host
+// label. Removing them is harmless: host is unique to the calling test.
+func removeSeries(v partialDeleter, host string) int {
+	return v.DeletePartialMatch(prometheus.Labels{"host": host})
+}
+
+func TestRecordRequestSkipsDisconnects(t *testing.T) {
+	const host = "disconnect.test"
+	for _, status := range []int{http.StatusOK, 0} { // with and without headers
+		RecordRequest(&Result{
+			Request:      &Request{Url: "http://" + host},
+			StatusCode:   status,
+			Latency:      5 * time.Minute,
+			Disconnected: true,
+		})
+	}
+	if n := removeSeries(requestDuration, host); n != 0 {
+		t.Errorf("duration series for disconnects = %d; want 0", n)
+	}
+	if n := removeSeries(responseStatus, host); n != 0 {
+		t.Errorf("status series for disconnects = %d; want 0", n)
+	}
+	if n := removeSeries(errorsTotal, host); n != 0 {
+		t.Errorf("error series for disconnects = %d; want 0", n)
 	}
 }

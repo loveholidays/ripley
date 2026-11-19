@@ -21,11 +21,16 @@ package ripley
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
 )
+
+// exitInvalidInput is the exit code when any input line is not a valid request.
+const exitInvalidInput = 126
 
 func Replay(phasesStr string, silent, dryRun bool, timeout int, strict bool, numWorkers, connections, maxConnections int, disableKeepAlives bool, printStatsInterval time.Duration, metricsServerEnable bool, metricsServerAddr string) int {
 	return ReplayWithMetricsConfig(phasesStr, silent, dryRun, timeout, strict, numWorkers, connections, maxConnections, disableKeepAlives, printStatsInterval, MetricsConfig{
@@ -55,18 +60,16 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 
 	// The pacer controls the rate of replay
 	pacer, err := newPacer(phasesStr)
-	pacer.ReportInterval = printStatsInterval
-
 	if err != nil {
 		panic(err)
 	}
+	pacer.ReportInterval = printStatsInterval
 
 	// Read Request JSONL input from STDIN
-	scanner := bufio.NewScanner(bufio.NewReaderSize(os.Stdin, 32*1024*1024))
+	input := bufio.NewReaderSize(os.Stdin, 32*1024*1024)
 
-	// Start HTTP client goroutine pool
-	startClientWorkers(numWorkers, requests, results, dryRun, timeout, connections, maxConnections, disableKeepAlives)
-	pacer.start()
+	// Run each request on its own goroutine, capped at numWorkers if positive
+	startRequestRunner(numWorkers, requests, results, dryRun, timeout, connections, maxConnections, disableKeepAlives)
 
 	// Goroutine to handle the  HTTP client result
 	resultHandlerWG.Add(1)
@@ -74,11 +77,6 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 		defer resultHandlerWG.Done()
 		for result := range results {
 			waitGroup.Done()
-
-			// If there's a panic elsewhere, this channel can return nil
-			if result == nil {
-				return
-			}
 
 			metricsRecorder.RecordRequest(result)
 
@@ -94,10 +92,15 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 		}
 	}()
 
-	for scanner.Scan() {
-		req, err := unmarshalRequest(scanner.Bytes())
+	for {
+		line, ok := nextLine(input)
+		if !ok {
+			break
+		}
+
+		req, err := unmarshalRequest(line)
 		if err != nil {
-			exitCode = 126
+			exitCode = exitInvalidInput
 			result, _ := json.Marshal(Result{
 				StatusCode: 0,
 				Latency:    0,
@@ -112,19 +115,14 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 			continue
 		}
 
-		if pacer.isDone() {
+		// The pacer decides how long to wait between requests
+		waitDuration, ok := pacer.schedule(req)
+		if !ok {
 			break
 		}
-
-		// The pacer decides how long to wait between requests
-		waitDuration := pacer.waitDuration(req.Timestamp)
 		time.Sleep(waitDuration)
 		waitGroup.Add(1)
 		requests <- req
-	}
-
-	if scanner.Err() != nil {
-		panic(scanner.Err())
 	}
 
 	// Close requests channel to signal worker goroutines to stop
@@ -140,4 +138,16 @@ func ReplayWithMetricsConfig(phasesStr string, silent, dryRun bool, timeout int,
 	resultHandlerWG.Wait()
 
 	return exitCode
+}
+
+// nextLine returns the next line of input, with no limit on its length,
+// unlike bufio.Scanner. The line keeps its "\n" or "\r\n", which
+// json.Unmarshal treats as whitespace. It returns false at the end of input
+// and panics if the input cannot be read.
+func nextLine(input *bufio.Reader) ([]byte, bool) {
+	line, err := input.ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		panic(err)
+	}
+	return line, len(line) > 0
 }
